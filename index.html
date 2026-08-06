@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>출퇴근체크</title>
+<link rel="icon" type="image/png" href="icon-192.png"/>
+<link rel="apple-touch-icon" href="icon-180.png"/>
+<link rel="manifest" href="manifest.json"/>
+<meta name="theme-color" content="#1E3A5F"/>
+<meta name="apple-mobile-web-app-title" content="출퇴근체크"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<style>
+:root{
+  --brand-1:#1E3A5F; --brand-2:#2E5F9E;
+  --bg:#F0F4F8; --card:#fff; --card-bd:#D1DCE8; --ink:#1A2332; --lbl:#5A7A9A;
+  --field-bg:#F7FAFC; --field-bd:#C8D8E8; --muted:#A0BBD4;
+  --ok:#27AE60; --err:#E74C3C;
+  --font-body:Arial,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+html{background:#dfe4ea; overflow-y:scroll; scrollbar-gutter:stable;}
+body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-height:100vh; padding:10px 10px 40px; font-size:17px; position:relative; max-width:480px; margin:0 auto; box-shadow:0 0 30px rgba(0,0,0,0.12);}
+
+.app-header{background:linear-gradient(135deg,var(--brand-1),var(--brand-2)); border-radius:12px; padding:12px 14px; margin-bottom:10px; color:#fff; display:flex; justify-content:space-between; align-items:flex-start; gap:10px;}
+.app-title{font-size:21px; font-weight:800; letter-spacing:.5px; display:flex; align-items:center; gap:8px;}
+.app-title img{width:44px; height:44px; border-radius:8px; flex-shrink:0;}
+.app-user{font-size:11px; opacity:.9; margin-top:4px;}
+.logout-btn{background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.4); color:#fff; border-radius:8px; padding:6px 10px; font-size:11px; font-weight:700; cursor:pointer; flex-shrink:0; font-family:var(--font-body);}
+
+.card{background:var(--card); border:1px solid var(--card-bd); border-radius:12px; padding:16px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06);}
+.flbl{font-size:13px; font-weight:700; color:var(--lbl); letter-spacing:.5px; text-transform:uppercase; margin:0 0 10px;}
+
+.ci-status{font-size:16px; font-weight:700; color:var(--ink); line-height:1.6; margin-bottom:14px;}
+.ci-status .dim{font-size:13px; font-weight:400; color:var(--lbl);}
+.ci-sub{font-size:12.5px; color:var(--lbl); text-align:center; margin-top:6px;}
+.ci-done{display:flex; align-items:center; gap:8px; background:rgba(39,174,96,0.1); border:1px solid rgba(39,174,96,0.35); border-radius:10px; padding:12px 14px; font-size:14px; font-weight:700; color:#1c7a44;}
+
+.sbtn{width:100%; padding:14px; border:none; border-radius:10px; font-size:16px; font-weight:800; cursor:pointer; font-family:var(--font-body);}
+.sbtn-main{background:var(--brand-2); color:#fff;}
+.sbtn-main:disabled{background:var(--muted); cursor:not-allowed;}
+.sbtn-outline{background:#fff; border:1.6px solid var(--brand-2); color:var(--brand-2); margin-bottom:8px;}
+.sbtn-outline:disabled{border-color:var(--muted); color:var(--muted); cursor:not-allowed;}
+
+.info-note{font-size:12px; color:var(--lbl); line-height:1.7; background:var(--field-bg); border:1.5px dashed var(--field-bd); border-radius:10px; padding:12px 14px;}
+
+.toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); max-width:calc(100vw - 32px); padding:10px 20px; border-radius:10px; font-size:14px; font-weight:700; color:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.2); opacity:0; pointer-events:none; transition:opacity .25s; white-space:normal; text-align:center; line-height:1.4; z-index:9998;}
+.toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div>
+    <div class="app-title"><img src="icon-mark.png" alt="">출퇴근체크</div>
+    <div class="app-user" id="hdrUser"></div>
+  </div>
+  <button type="button" class="logout-btn" onclick="logout()">로그아웃</button>
+</div>
+
+<div class="card" id="checkinCard">
+  <div class="flbl">오늘 출력체크 (<span id="todayLabel"></span>)</div>
+  <div class="ci-status" id="ciStatus">불러오는 중...</div>
+  <div id="ciActions"></div>
+</div>
+
+<div class="info-note">
+  ⓘ 출근·퇴근 모두 현장 반경 <b>1km</b> 이내에서만 가능합니다. 정규 퇴근은 <b>16:55</b>부터 가능하고,
+  연장근무를 신청한 경우 그날 관리자가 지정한 연장종료시간 <b>+5분</b>부터 퇴근체크가 가능합니다.
+  하루에 출근·퇴근 각 1회만 기록됩니다.
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+if(!localStorage.getItem('member_id')){ location.href='login.html'; }
+
+var SUPABASE_URL='https://feymoykefzfwucbrqoja.supabase.co';
+var SUPABASE_KEY='sb_publishable_ANT6G7_ka3IPHRk_4vLtBg_7G9NWW7i';
+var sbClient=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+
+function logout(){
+  ['member_id','member_name','member_company','member_project','member_phone','member_team','member_menu','member_cat','member_is_leader','senderName'].forEach(function(k){ localStorage.removeItem(k); });
+  location.href='login.html';
+}
+function showToast(msg, color){
+  var t=document.getElementById('toast');
+  t.textContent=msg; t.style.background=color; t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer=setTimeout(function(){ t.classList.remove('show'); }, 2400);
+}
+
+document.getElementById('hdrUser').textContent = (localStorage.getItem('member_name')||'') + ' · ' + (localStorage.getItem('member_team')||'미지정');
+
+function todayStr(){
+  var d=new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function draftId(){
+  return (localStorage.getItem('member_team')||'미지정')+'_'+todayStr();
+}
+function fmtTime(iso){
+  var d=new Date(iso);
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+document.getElementById('todayLabel').textContent = todayStr();
+
+/* 출근/퇴근 반경 게이트 — work-report-daesun 출력체크와 달리 관리자 조정 없이 1km로
+   고정한다(2026-08-06, 사용자 요청: "출퇴근 모두 반경 1km로 고정"). 현장 좌표(site_lat/
+   site_lng)만 work-report-daesun/admin.html에서 그대로 가져와 쓴다. */
+var GEOFENCE_M = 1000;
+var SITE_LAT=null, SITE_LNG=null;
+var OVERTIME_DATE=null, OVERTIME_END=null;
+var myCrew = null;
+var lastDistance = null, lastDistanceErr = null;
+
+function haversineM(lat1,lng1,lat2,lng2){
+  var R=6371000;
+  var toRad=function(d){ return d*Math.PI/180; };
+  var dLat=toRad(lat2-lat1), dLng=toRad(lng2-lng1);
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+function formatDist(m){
+  return m>=1000 ? (m/1000).toFixed(1)+'km' : Math.round(m)+'m';
+}
+
+async function loadSettings(){
+  try{
+    var res = await sbClient.from('app_settings').select('site_lat,site_lng,overtime_date,overtime_end_time').eq('id','global').single();
+    if(!res.error && res.data){
+      SITE_LAT = res.data.site_lat; SITE_LNG = res.data.site_lng;
+      OVERTIME_DATE = res.data.overtime_date || null;
+      OVERTIME_END = res.data.overtime_end_time || null;
+    }
+  }catch(e){ console.error('현장 설정 불러오기 실패', e); }
+}
+
+async function loadMyStatus(){
+  try{
+    var res = await sbClient.from('daily_reports').select('crew').eq('id', draftId()).single();
+    var crew = (res.data && Array.isArray(res.data.crew)) ? res.data.crew : [];
+    var memberId = localStorage.getItem('member_id');
+    myCrew = crew.find(function(c){ return c.member_id===memberId; }) || null;
+  }catch(e){ console.error('출력체크 상태 불러오기 실패', e); }
+}
+
+function refreshDistance(){
+  return new Promise(function(resolve){
+    if(SITE_LAT==null || SITE_LNG==null){ lastDistance=null; lastDistanceErr='관리자가 아직 현장 좌표를 등록하지 않았습니다.'; resolve(); return; }
+    if(!navigator.geolocation){ lastDistance=null; lastDistanceErr='이 기기는 위치 확인을 지원하지 않습니다.'; resolve(); return; }
+    navigator.geolocation.getCurrentPosition(function(pos){
+      lastDistance = haversineM(pos.coords.latitude, pos.coords.longitude, SITE_LAT, SITE_LNG);
+      lastDistanceErr = null;
+      resolve();
+    }, function(err){
+      lastDistance=null; lastDistanceErr='위치 확인 실패: '+err.message;
+      resolve();
+    }, {enableHighAccuracy:true, timeout:10000});
+  });
+}
+
+// 오늘 관리자가 지정한 연장근무 종료시간이 유효한지(그 날짜여야 함) — 지난 날짜 값이 남아있어도
+// 오늘이 아니면 무시된다(관리자가 매일 새로 입력해야 적용, admin.html 쪽 설계와 동일).
+function overtimeSetForToday(){
+  return OVERTIME_DATE===todayStr() && !!OVERTIME_END;
+}
+function regularCheckoutGate(){
+  var g=new Date(); g.setHours(16,55,0,0); return g;
+}
+function overtimeCheckoutGate(){
+  var parts=(OVERTIME_END||'0:0').split(':');
+  var g=new Date(); g.setHours(Number(parts[0])||0, (Number(parts[1])||0)+5, 0, 0); return g;
+}
+function checkoutGate(){
+  return (myCrew && myCrew.overtimeCheckAt && overtimeSetForToday()) ? overtimeCheckoutGate() : regularCheckoutGate();
+}
+function fmtGate(d){
+  return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+
+async function updateMyCrewEntry(patch){
+  var id = draftId();
+  var memberId = localStorage.getItem('member_id');
+  var memberName = localStorage.getItem('member_name')||'이름없음';
+  var res = await sbClient.from('daily_reports').select('crew').eq('id',id).single();
+  var crew = (res.data && Array.isArray(res.data.crew)) ? res.data.crew.slice() : [];
+  var idx = crew.findIndex(function(c){ return c.member_id===memberId; });
+  if(idx===-1){ crew.push(Object.assign({member_id:memberId, member_name:memberName}, patch)); }
+  else{ crew[idx] = Object.assign({}, crew[idx], patch); }
+  var up = await sbClient.from('daily_reports').upsert({id:id, team:localStorage.getItem('member_team')||'미지정', date:todayStr(), crew:crew, updated_at:new Date().toISOString()});
+  return {error: up.error};
+}
+
+async function doCheckIn(){
+  if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 1km 이내에서만 출근체크할 수 있습니다', 'var(--err)'); return; }
+  var res = await updateMyCrewEntry({checkInAt:new Date().toISOString(), checkInDistanceM:Math.round(lastDistance)});
+  if(res.error){ showToast('❌ 출근체크 실패: '+res.error.message, 'var(--err)'); return; }
+  showToast('✅ 출근체크 완료', 'var(--ok)');
+  await loadMyStatus(); renderState();
+}
+async function doOvertimeCheck(){
+  var res = await updateMyCrewEntry({overtimeCheckAt:new Date().toISOString()});
+  if(res.error){ showToast('❌ 연장근무 신청 실패: '+res.error.message, 'var(--err)'); return; }
+  showToast('🔥 연장근무 신청 완료', 'var(--ok)');
+  await loadMyStatus(); renderState();
+}
+async function doCheckOut(){
+  if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 1km 이내에서만 퇴근체크할 수 있습니다', 'var(--err)'); return; }
+  if(new Date() < checkoutGate()){ showToast('⚠️ 아직 퇴근체크 시간이 아닙니다', 'var(--err)'); return; }
+  var res = await updateMyCrewEntry({checkOutAt:new Date().toISOString(), checkOutDistanceM:Math.round(lastDistance)});
+  if(res.error){ showToast('❌ 퇴근체크 실패: '+res.error.message, 'var(--err)'); return; }
+  showToast('✅ 퇴근체크 완료 — 수고하셨습니다', 'var(--ok)');
+  await loadMyStatus(); renderState();
+}
+
+function renderState(){
+  var statusEl = document.getElementById('ciStatus');
+  var actionsEl = document.getElementById('ciActions');
+  var distLine = lastDistanceErr
+    ? '<div class="dim">'+lastDistanceErr+'</div>'
+    : (lastDistance!=null ? '<div class="dim">현장까지 '+formatDist(lastDistance)+'</div>' : '');
+
+  if(!myCrew || !myCrew.checkInAt){
+    statusEl.innerHTML = '아직 출근체크 전입니다'+distLine;
+    var canCheckIn = lastDistance!=null && lastDistance<=GEOFENCE_M;
+    actionsEl.innerHTML = '<button type="button" class="sbtn sbtn-main" id="btnCheckIn" '+(canCheckIn?'':'disabled')+'>📍 출근체크</button>';
+    var btn = document.getElementById('btnCheckIn'); if(btn) btn.onclick = doCheckIn;
+    return;
+  }
+
+  if(myCrew.checkOutAt){
+    statusEl.innerHTML = '출근 <b>'+fmtTime(myCrew.checkInAt)+'</b> · 퇴근 <b>'+fmtTime(myCrew.checkOutAt)+'</b>'
+      + (myCrew.overtimeCheckAt ? '<br><span style="font-size:13px;color:var(--brand-2);">🔥 연장근무</span>' : '');
+    actionsEl.innerHTML = '<div class="ci-done">✅ 오늘 출력체크 완료</div>';
+    return;
+  }
+
+  // 출근함, 퇴근 전
+  var now = new Date();
+  var deadline1705 = new Date(); deadline1705.setHours(17,5,0,0);
+  var canDeclareOvertime = !myCrew.overtimeCheckAt && now < deadline1705 && overtimeSetForToday();
+  var gate = checkoutGate();
+  var canCheckOut = now>=gate && lastDistance!=null && lastDistance<=GEOFENCE_M;
+
+  statusEl.innerHTML = '출근 <b>'+fmtTime(myCrew.checkInAt)+'</b>'
+    + (myCrew.overtimeCheckAt ? '<br><span style="font-size:13px;color:var(--brand-2);">🔥 연장근무 신청됨</span>' : '')
+    + distLine;
+
+  var html = '';
+  if(canDeclareOvertime){
+    html += '<button type="button" class="sbtn sbtn-outline" id="btnOvertime">🔥 연장근무 체크 ('+deadline1705.getHours()+':'+String(deadline1705.getMinutes()).padStart(2,'0')+'까지)</button>';
+  }
+  html += '<button type="button" class="sbtn sbtn-main" id="btnCheckOut" '+(canCheckOut?'':'disabled')+'>🚪 퇴근체크</button>';
+  if(!canCheckOut){
+    html += '<div class="ci-sub">'+fmtGate(gate)+'부터 반경 1km 이내에서 가능</div>';
+  }
+  actionsEl.innerHTML = html;
+  var ob = document.getElementById('btnOvertime'); if(ob) ob.onclick = doOvertimeCheck;
+  var cb = document.getElementById('btnCheckOut'); if(cb) cb.onclick = doCheckOut;
+}
+
+async function refreshAll(){
+  await refreshDistance();
+  renderState();
+}
+
+(async function init(){
+  await loadSettings();
+  await loadMyStatus();
+  await refreshDistance();
+  renderState();
+  setInterval(refreshAll, 30000);
+})();
+</script>
+
+<script>
+/* work-report-daesun과 동일한 서비스워커 자동 업데이트 패턴(2026-08-06). */
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('./sw.js').then(function(reg){
+    function promptUpdate(){
+      if(document.getElementById('updateBanner'))return;
+      var b=document.createElement('div');
+      b.id='updateBanner';
+      b.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#1A2332;color:#fff;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:700;z-index:99999;display:flex;align-items:center;gap:12px;box-shadow:0 4px 16px rgba(0,0,0,0.35);white-space:nowrap;';
+      b.innerHTML='새 버전이 있습니다 <button id="updateBtn" style="background:#FEE500;color:#1A2332;border:none;border-radius:8px;padding:7px 14px;font-size:13px;font-weight:800;cursor:pointer;">업데이트</button>';
+      document.body.appendChild(b);
+      document.getElementById('updateBtn').onclick=function(){
+        if(reg.waiting) reg.waiting.postMessage('SKIP_WAITING');
+      };
+    }
+    if(reg.waiting && navigator.serviceWorker.controller) reg.waiting.postMessage('SKIP_WAITING');
+    reg.addEventListener('updatefound',function(){
+      var nw=reg.installing;
+      if(!nw)return;
+      nw.addEventListener('statechange',function(){
+        if(nw.state==='installed' && navigator.serviceWorker.controller) promptUpdate();
+      });
+    });
+    document.addEventListener('visibilitychange',function(){
+      if(document.visibilityState==='visible') reg.update();
+    });
+    reg.update();
+  });
+  var wrReloading=false;
+  navigator.serviceWorker.addEventListener('controllerchange',function(){
+    if(wrReloading)return;
+    wrReloading=true;
+    location.reload();
+  });
+}
+</script>
+</body>
+</html>
