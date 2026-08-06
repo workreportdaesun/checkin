@@ -30,6 +30,8 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 
 .card{background:var(--card); border:1px solid var(--card-bd); border-radius:12px; padding:16px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06);}
 .flbl{font-size:13px; font-weight:700; color:var(--lbl); letter-spacing:.5px; text-transform:uppercase; margin:0 0 10px;}
+.f{width:100%; background:var(--field-bg); border:1.5px solid var(--field-bd); border-radius:8px; padding:10px 11px; color:var(--ink); font-size:16px; font-family:var(--font-body); margin-bottom:10px;}
+.settings-btn{background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.4); color:#fff; border-radius:8px; padding:6px 10px; font-size:13px; font-weight:700; cursor:pointer; flex-shrink:0; font-family:var(--font-body);}
 
 .ci-status{font-size:16px; font-weight:700; color:var(--ink); line-height:1.6; margin-bottom:14px;}
 .ci-status .dim{font-size:13px; font-weight:400; color:var(--lbl);}
@@ -55,7 +57,25 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
     <div class="app-title"><img src="icon-mark.png" alt="">출퇴근체크</div>
     <div class="app-user" id="hdrUser"></div>
   </div>
-  <button type="button" class="logout-btn" onclick="logout()">로그아웃</button>
+  <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
+    <button type="button" class="settings-btn" onclick="toggleMySettings()">⚙️ 내 정보</button>
+    <button type="button" class="logout-btn" onclick="logout()">로그아웃</button>
+  </div>
+</div>
+
+<!-- 내 정보(공종/작업분류/소속/직책) — work-report-daesun ⚙️설정>계정과 동일한 항목·옵션
+     (2026-08-06, 사용자 요청). 기본은 접혀있고 ⚙️ 버튼으로 펼침. -->
+<div class="card" id="mySettingsCard" style="display:none;">
+  <div class="flbl">내 정보</div>
+  <div class="flbl" style="margin-top:0;font-size:11px;">공종</div>
+  <select id="myMenuSelect" class="f" onchange="renderMyCatOptions()"></select>
+  <div class="flbl" style="font-size:11px;">작업분류</div>
+  <select id="myCatSelect" class="f"></select>
+  <div class="flbl" style="font-size:11px;">소속</div>
+  <select id="myTeamSelect" class="f"></select>
+  <div class="flbl" style="font-size:11px;">직책</div>
+  <select id="myPositionSelect" class="f"></select>
+  <button type="button" class="sbtn sbtn-main" onclick="saveMySettings()">💾 내 정보 저장</button>
 </div>
 
 <div class="card" id="checkinCard">
@@ -92,6 +112,82 @@ function showToast(msg, color){
 }
 
 document.getElementById('hdrUser').textContent = (localStorage.getItem('member_name')||'') + ' · ' + (localStorage.getItem('member_team')||'미지정');
+
+/* ⚙️ 내 정보 — work-report-daesun ⚙️설정>계정과 동일한 항목·옵션(공종/작업분류/소속/직책,
+   2026-08-06 추가) — 로그인 화면(login.html) 회원가입 항목과 일치시킴. 여기서 소속/작업분류를
+   바꾸면 다음 출근체크부터 바로 반영된다(오늘 이미 체크인했으면 오늘 기록은 그대로 유지). */
+var catsByMenu = {
+  '시공': ['DCS Panel','LCP','Junction Box','Field Instrument','Cable Duct','Cable Tray','Conduit Pipe','Air Pipe','Hook Up','Stanchion','Support','Connection','Line Check','Loop Test','Leak Test','Instrument Calibration','Steam Tracing Tube','Steam Tracing Insulation','Scaffolding','Others'],
+  '품질': ['DCS Panel','LCP','Junction Box','Field Instrument','Cable Duct','Cable Tray','Conduit Pipe','Air Pipe','Hook Up','Stanchion','Support','Connection','Line Check','Loop Test','Leak Test','Instrument Calibration','Steam Tracing Tube','Steam Tracing Insulation','Scaffolding','Others'],
+  '자재': ['DCS Panel','LCP','Junction Box','Field Instrument','Cable Duct','Cable Tray','Conduit Pipe','Air Pipe','Hook Up','Stanchion','Support','Connection','Line Check','Loop Test','Leak Test','Instrument Calibration','Steam Tracing Tube','Steam Tracing Insulation','Scaffolding','Others'],
+  '안전': ['개인보호구','안전난간','소화기','전기안전','고소작업','위험물보관','비상통로','중장비안전','밀폐공간','낙하물방지','기타'],
+  '화기/유도': ['용접작업','절단작업','화재감시','가연물제거','방화포','가스누출점검','소화기배치','유도원배치','차량유도','작업구간통제','기타']
+};
+var POSITION_OPTIONS = ['현장소장','공무부장','공무과장','공사부장','공사차장','품질차장','품질과장','기사','팀장','계장공','전공','조공','결선공','케이블공','LOOP','비계공','화기감시자','유도원','신호수','계기교정','기타'];
+var myTeamList = ['1팀(계장)','2팀(계장)','품질팀','안전관리팀'];
+var mySettingsLoaded = false;
+function toggleMySettings(){
+  var card = document.getElementById('mySettingsCard');
+  var opening = card.style.display==='none';
+  card.style.display = opening ? '' : 'none';
+  if(opening && !mySettingsLoaded){ mySettingsLoaded = true; loadMyTeamList().then(renderMySettings); }
+}
+async function loadMyTeamList(){
+  try{
+    var res = await sbClient.from('app_settings').select('personnel,cats_by_menu').eq('id','global').single();
+    if(!res.error && res.data){
+      if(Array.isArray(res.data.personnel) && res.data.personnel.length) myTeamList = res.data.personnel;
+      var data = res.data.cats_by_menu;
+      if(data){ Object.keys(catsByMenu).forEach(function(m){ if(Array.isArray(data[m]) && data[m].length) catsByMenu[m] = data[m]; }); }
+    }
+  }catch(e){ console.error('내 정보 목록 불러오기 실패', e); }
+}
+function renderMySettings(){
+  var menuSel = document.getElementById('myMenuSelect');
+  menuSel.innerHTML = Object.keys(catsByMenu).map(function(m){ return '<option>'+m+'</option>'; }).join('');
+  var savedMenu = localStorage.getItem('member_menu')||'';
+  if(Object.keys(catsByMenu).indexOf(savedMenu)!==-1) menuSel.value = savedMenu;
+  renderMyCatOptions();
+  var teamSel = document.getElementById('myTeamSelect');
+  var teamList = myTeamList.concat(['관리']);
+  teamSel.innerHTML = teamList.map(function(t){ return '<option>'+t+'</option>'; }).join('');
+  var savedTeam = localStorage.getItem('member_team')||'';
+  if(teamList.indexOf(savedTeam)!==-1) teamSel.value = savedTeam;
+  var posSel = document.getElementById('myPositionSelect');
+  posSel.innerHTML = ['<option value=""></option>'].concat(POSITION_OPTIONS.map(function(p){ return '<option>'+p+'</option>'; })).join('');
+  var savedPosition = localStorage.getItem('member_position')||'';
+  if(POSITION_OPTIONS.indexOf(savedPosition)!==-1) posSel.value = savedPosition;
+}
+function renderMyCatOptions(){
+  var menu = document.getElementById('myMenuSelect').value;
+  var sel = document.getElementById('myCatSelect');
+  var cur = sel.value;
+  var list = (catsByMenu[menu]||[]).concat(['관리자']);
+  sel.innerHTML = list.map(function(c){ return '<option>'+c+'</option>'; }).join('');
+  var savedCat = localStorage.getItem('member_cat')||'';
+  if(list.indexOf(savedCat)!==-1) sel.value = savedCat;
+  else if(list.indexOf(cur)!==-1) sel.value = cur;
+}
+async function saveMySettings(){
+  var menu=document.getElementById('myMenuSelect').value;
+  var cat=document.getElementById('myCatSelect').value;
+  var team=document.getElementById('myTeamSelect').value;
+  var position=document.getElementById('myPositionSelect').value;
+  var id=localStorage.getItem('member_id');
+  if(!id||!sbClient) return;
+  try{
+    var res=await sbClient.from('members').update({menu:menu,cat:cat,team:team,position:position}).eq('id',id);
+    if(res.error){ showToast('❌ 저장 실패: '+res.error.message, 'var(--err)'); return; }
+    localStorage.setItem('member_menu', menu);
+    localStorage.setItem('member_cat', cat);
+    localStorage.setItem('member_team', team);
+    localStorage.setItem('member_position', position);
+    document.getElementById('hdrUser').textContent = (localStorage.getItem('member_name')||'') + ' · ' + team;
+    showToast('✅ 내 정보 저장됨', 'var(--ok)');
+    // 소속이 바뀌면 오늘 체크인 대상 행(draftId)도 바뀌므로 화면을 바로 다시 불러온다.
+    if(typeof loadMyStatus==='function'){ await loadMyStatus(); renderState(); }
+  }catch(e){ showToast('❌ 저장 실패: '+(e.message||e), 'var(--err)'); }
+}
 
 function todayStr(){
   var d=new Date();
