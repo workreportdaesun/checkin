@@ -303,7 +303,7 @@ async function doCheckIn(){
   // 나중에 이 사람의 등록 분류가 바뀌어도 이미 지난 날짜의 기록은 그대로 남고(과거 데이터
   // 불변), 바뀐 이후 새로 체크인하는 날부터만 새 분류로 잡힌다 — 날짜별로 독립된 행
   // (daily_reports.id = team_date)에 스냅샷하는 구조라 자연히 그렇게 된다.
-  var res = await updateMyCrewEntry({checkInAt:new Date().toISOString(), checkInDistanceM:Math.round(lastDistance), menu: localStorage.getItem('member_menu')||'', cat: localStorage.getItem('member_cat')||''});
+  var res = await updateMyCrewEntry({checkInAt:new Date().toISOString(), checkInDistanceM:Math.round(lastDistance), menu: localStorage.getItem('member_menu')||'', cat: localStorage.getItem('member_cat')||'', position: localStorage.getItem('member_position')||''});
   if(res.error){ showToast('❌ 출근체크 실패: '+res.error.message, 'var(--err)'); return; }
   showToast('✅ 출근체크 완료', 'var(--ok)');
   await loadMyStatus(); renderState();
