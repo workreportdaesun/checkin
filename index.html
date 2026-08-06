@@ -195,9 +195,18 @@ async function updateMyCrewEntry(patch){
 
 async function doCheckIn(){
   if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 1km 이내에서만 출근체크할 수 있습니다', 'var(--err)'); return; }
+  // 화면 버튼은 이미 체크인했으면 안 보이지만, 두 번 연속 탭하거나 다른 탭에서 동시에 누르는
+  // 경우까지 막으려고 실제 저장 직전에 서버 최신값을 한 번 더 확인한다(2026-08-06, "중복이나
+  // 삭제가 되지 않도록" 요청) — updateMyCrewEntry는 병합(merge)이라 두 번 호출되면 checkInAt/
+  // cat이 나중 값으로 덮어써질 수 있어, 아예 다시 쓰지 않도록 여기서 미리 막는다.
+  await loadMyStatus();
+  if(myCrew && myCrew.checkInAt){ showToast('이미 오늘 출근체크를 완료했습니다', 'var(--brand-2)'); renderState(); return; }
   // 작업일보(work-report-daesun)의 인원현황 작업분류별 집계가 이 스냅샷(menu/cat)을 그대로
   // 쓴다 — 그날 작업일보에 어떤 분류가 등장했는지가 아니라, 이 사람이 가입 때 등록한(또는
-  // 작업일보 ⚙️설정에서 바꾼) 자기 분류로 집계된다(2026-08-06).
+  // 작업일보 ⚙️설정에서 바꾼) 자기 분류로 집계된다(2026-08-06). 체크인 시점의 스냅샷이라,
+  // 나중에 이 사람의 등록 분류가 바뀌어도 이미 지난 날짜의 기록은 그대로 남고(과거 데이터
+  // 불변), 바뀐 이후 새로 체크인하는 날부터만 새 분류로 잡힌다 — 날짜별로 독립된 행
+  // (daily_reports.id = team_date)에 스냅샷하는 구조라 자연히 그렇게 된다.
   var res = await updateMyCrewEntry({checkInAt:new Date().toISOString(), checkInDistanceM:Math.round(lastDistance), menu: localStorage.getItem('member_menu')||'', cat: localStorage.getItem('member_cat')||''});
   if(res.error){ showToast('❌ 출근체크 실패: '+res.error.message, 'var(--err)'); return; }
   showToast('✅ 출근체크 완료', 'var(--ok)');
