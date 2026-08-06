@@ -117,9 +117,9 @@ document.getElementById('hdrUser').textContent = (localStorage.getItem('member_n
    2026-08-06 추가) — 로그인 화면(login.html) 회원가입 항목과 일치시킴. 여기서 소속/작업분류를
    바꾸면 다음 출근체크부터 바로 반영된다(오늘 이미 체크인했으면 오늘 기록은 그대로 유지). */
 var catsByMenu = {
-  '시공': ['DCS Panel','LCP','Junction Box','Field Instrument','Cable Duct','Cable Tray','Conduit Pipe','Air Pipe','Hook Up','Stanchion','Support','Connection','Line Check','Loop Test','Leak Test','Instrument Calibration','Steam Tracing Tube','Steam Tracing Insulation','Scaffolding','Others'],
-  '품질': ['DCS Panel','LCP','Junction Box','Field Instrument','Cable Duct','Cable Tray','Conduit Pipe','Air Pipe','Hook Up','Stanchion','Support','Connection','Line Check','Loop Test','Leak Test','Instrument Calibration','Steam Tracing Tube','Steam Tracing Insulation','Scaffolding','Others'],
-  '자재': ['DCS Panel','LCP','Junction Box','Field Instrument','Cable Duct','Cable Tray','Conduit Pipe','Air Pipe','Hook Up','Stanchion','Support','Connection','Line Check','Loop Test','Leak Test','Instrument Calibration','Steam Tracing Tube','Steam Tracing Insulation','Scaffolding','Others'],
+  '시공': ['DCS Panel','LCP','Junction Box','Instrument','Cable Duct','Cable Tray','Cable Pulling','Connection','Conduit Pipe','Air Pipe','Hook Up','Support','Stanchion','Steam Tracing','Scaffolding','Line Check','Loop Test','Calibration','Leak Test','Others','관리자','장비작업'],
+  '품질': ['DCS Panel','LCP','Junction Box','Instrument','Cable Duct','Cable Tray','Cable Pulling','Connection','Conduit Pipe','Air Pipe','Hook Up','Support','Stanchion','Steam Tracing','Scaffolding','Line Check','Loop Test','Calibration','Leak Test','Others','관리자','장비작업'],
+  '자재': ['DCS Panel','LCP','Junction Box','Instrument','Cable Duct','Cable Tray','Cable Pulling','Connection','Conduit Pipe','Air Pipe','Hook Up','Support','Stanchion','Steam Tracing','Scaffolding','Line Check','Loop Test','Calibration','Leak Test','Others','관리자','장비작업'],
   '안전': ['개인보호구','안전난간','소화기','전기안전','고소작업','위험물보관','비상통로','중장비안전','밀폐공간','낙하물방지','기타'],
   '화기/유도': ['용접작업','절단작업','화재감시','가연물제거','방화포','가스누출점검','소화기배치','유도원배치','차량유도','작업구간통제','기타']
 };
@@ -162,7 +162,8 @@ function renderMyCatOptions(){
   var menu = document.getElementById('myMenuSelect').value;
   var sel = document.getElementById('myCatSelect');
   var cur = sel.value;
-  var list = (catsByMenu[menu]||[]).concat(['관리자']);
+  var base = catsByMenu[menu]||[];
+  var list = base.indexOf('관리자')!==-1 ? base : base.concat(['관리자']);
   sel.innerHTML = list.map(function(c){ return '<option>'+c+'</option>'; }).join('');
   var savedCat = localStorage.getItem('member_cat')||'';
   if(list.indexOf(savedCat)!==-1) sel.value = savedCat;
