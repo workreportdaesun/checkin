@@ -195,7 +195,10 @@ async function updateMyCrewEntry(patch){
 
 async function doCheckIn(){
   if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 1km 이내에서만 출근체크할 수 있습니다', 'var(--err)'); return; }
-  var res = await updateMyCrewEntry({checkInAt:new Date().toISOString(), checkInDistanceM:Math.round(lastDistance)});
+  // 작업일보(work-report-daesun)의 인원현황 작업분류별 집계가 이 스냅샷(menu/cat)을 그대로
+  // 쓴다 — 그날 작업일보에 어떤 분류가 등장했는지가 아니라, 이 사람이 가입 때 등록한(또는
+  // 작업일보 ⚙️설정에서 바꾼) 자기 분류로 집계된다(2026-08-06).
+  var res = await updateMyCrewEntry({checkInAt:new Date().toISOString(), checkInDistanceM:Math.round(lastDistance), menu: localStorage.getItem('member_menu')||'', cat: localStorage.getItem('member_cat')||''});
   if(res.error){ showToast('❌ 출근체크 실패: '+res.error.message, 'var(--err)'); return; }
   showToast('✅ 출근체크 완료', 'var(--ok)');
   await loadMyStatus(); renderState();
