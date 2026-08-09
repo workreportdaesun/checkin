@@ -78,10 +78,31 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
   <button type="button" class="sbtn sbtn-main" onclick="saveMySettings()">💾 내 정보 저장</button>
 </div>
 
+<!-- 권한이 모자라 다른 앱에서 되돌아온 경우의 안내(role-gate.js가 sessionStorage에 남긴 쪽지). -->
+<div class="card" id="deniedNote" style="display:none; background:rgba(243,156,18,0.10); border:1px solid rgba(243,156,18,0.45);">
+  <div style="font-size:13px; line-height:1.65; color:#8A5D0C;">
+    <b>출퇴근체크만 이용할 수 있는 계정입니다.</b><br>
+    작업일보·작업사진 등을 쓰려면 운영자에게 권한 승급을 요청해 주세요.
+  </div>
+</div>
+
 <div class="card" id="checkinCard">
   <div class="flbl">오늘 출력체크 (<span id="todayLabel"></span>)</div>
   <div class="ci-status" id="ciStatus">불러오는 중...</div>
   <div id="ciActions"></div>
+</div>
+
+<!-- 내 출력일수(2026-08-09) — 작업자에게 허용된 두 가지 기능 중 하나.
+     daily_reports.crew[]에서 내 member_id가 든 날을 세므로 별도 테이블이 필요 없고,
+     관리자 화면의 출력일지(같은 원천)와 숫자가 어긋나지 않는다. -->
+<div class="card" id="myDaysCard">
+  <div class="flbl">내 출력일수</div>
+  <div style="display:flex; gap:10px; margin-bottom:10px;">
+    <select id="myDaysMonth" class="f" style="flex:1;" onchange="loadMyDays()"></select>
+    <button type="button" class="sbtn" style="flex-shrink:0; width:auto; padding:0 14px; margin:0;" onclick="loadMyDays()">조회</button>
+  </div>
+  <div id="myDaysSummary" style="display:flex; gap:8px; margin-bottom:10px;"></div>
+  <div id="myDaysList" style="font-size:13px; color:var(--lbl);">불러오는 중...</div>
 </div>
 
 <div class="info-note">
@@ -101,7 +122,7 @@ var SUPABASE_KEY='sb_publishable_ANT6G7_ka3IPHRk_4vLtBg_7G9NWW7i';
 var sbClient=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
 function logout(){
-  ['member_id','member_name','member_company','member_project','member_phone','member_team','member_menu','member_cat','member_position','member_is_leader','senderName'].forEach(function(k){ localStorage.removeItem(k); });
+  ['member_id','member_name','member_company','member_project','member_phone','member_team','member_menu','member_cat','member_position','member_is_leader','member_role','senderName'].forEach(function(k){ localStorage.removeItem(k); });
   location.href='login.html';
 }
 function showToast(msg, color){
@@ -419,6 +440,79 @@ if('serviceWorker' in navigator){
     location.reload();
   });
 }
+
+/* ── 권한 부족으로 되돌아온 경우 안내 한 번만 표시 (role-gate.js가 남긴 쪽지) ── */
+(function(){
+  try{
+    if(sessionStorage.getItem('wr_role_denied')){
+      sessionStorage.removeItem('wr_role_denied');
+      document.getElementById('deniedNote').style.display='';
+    }
+  }catch(e){}
+})();
+
+/* ── 내 출력일수(2026-08-09) ──
+   daily_reports를 팀+월로 좁혀서 가져온 뒤 crew[]에서 내 member_id가 든 날을 센다.
+   별도 테이블을 만들지 않는 이유는 관리자 화면의 출력일지가 이미 같은 원천(crew)을 쓰고
+   있어서다 — 원천을 둘로 나누면 두 화면의 숫자가 어긋난다. */
+function ymOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+(function initMyDaysMonths(){
+  var sel=document.getElementById('myDaysMonth');
+  var now=new Date(), opts=[];
+  for(var i=0;i<6;i++){
+    var d=new Date(now.getFullYear(), now.getMonth()-i, 1);
+    opts.push('<option value="'+ymOf(d)+'">'+d.getFullYear()+'년 '+(d.getMonth()+1)+'월</option>');
+  }
+  sel.innerHTML=opts.join('');
+})();
+
+async function loadMyDays(){
+  var listEl=document.getElementById('myDaysList');
+  var sumEl=document.getElementById('myDaysSummary');
+  var myId=localStorage.getItem('member_id');
+  var team=localStorage.getItem('member_team')||'미지정';
+  var ym=document.getElementById('myDaysMonth').value;
+  if(!sbClient || !myId){ listEl.textContent='불러올 수 없습니다.'; return; }
+  listEl.textContent='불러오는 중...'; sumEl.innerHTML='';
+  try{
+    /* 소속이 바뀐 적이 있으면 예전 팀 행에도 내 기록이 남아 있다. 팀으로 좁히면 그게 빠지므로
+       날짜 범위로만 좁히고 crew 안에서 내 id로 거른다(회원 1~수십 명 규모라 부담 없음). */
+    var res=await sbClient.from('daily_reports')
+      .select('date,crew')
+      .gte('date', ym+'-01').lte('date', ym+'-31')
+      .order('date');
+    if(res.error){ listEl.textContent='불러오기 실패: '+res.error.message; return; }
+
+    var days=[];
+    (res.data||[]).forEach(function(row){
+      var crew=Array.isArray(row.crew)?row.crew:[];
+      var me=crew.find(function(c){ return String(c.member_id)===String(myId); });
+      if(me && me.checkInAt) days.push({date:row.date, me:me});
+    });
+    // 같은 날 여러 팀 행에 걸쳐 있어도 하루는 하루로 센다.
+    var seen={}, uniq=[];
+    days.forEach(function(d){ if(!seen[d.date]){ seen[d.date]=1; uniq.push(d); } });
+
+    var overtime=uniq.filter(function(d){ return d.me.overtimeCheckAt; }).length;
+    function pill(label, value, color){
+      return '<div style="flex:1;background:var(--field-bg);border:1px solid var(--field-bd);border-radius:10px;padding:10px;text-align:center;">'
+        +'<div style="font-size:20px;font-weight:800;color:'+color+';">'+value+'</div>'
+        +'<div style="font-size:11px;color:var(--lbl);margin-top:2px;">'+label+'</div></div>';
+    }
+    sumEl.innerHTML = pill('출력일수', uniq.length+'일', 'var(--brand-2)')
+      + pill('연장근무', overtime+'일', '#8A5D0C');
+
+    if(!uniq.length){ listEl.innerHTML='<div style="padding:8px 0;">이 달에는 출력 기록이 없습니다.</div>'; return; }
+    listEl.innerHTML = uniq.map(function(d){
+      var t=function(v){ return v ? v.slice(11,16) : '-'; };
+      return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--field-bg);">'
+        +'<span style="color:var(--ink);font-weight:700;">'+d.date+'</span>'
+        +'<span>출근 '+t(d.me.checkInAt)+' · 퇴근 '+t(d.me.checkOutAt)+(d.me.overtimeCheckAt?' · 연장':'')+'</span>'
+        +'</div>';
+    }).join('');
+  }catch(e){ listEl.textContent='불러오기 실패: '+(e.message||e); }
+}
+loadMyDays();
 </script>
 </body>
 </html>
