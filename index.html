@@ -302,16 +302,38 @@ function fmtGate(d){
   return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
 
+/* RPC가 아직 안 만들어졌는지(마이그레이션 전) 판별 — PostgREST는 스키마 캐시에 없는
+   함수를 부르면 PGRST202로 답한다. 그 경우에만 예전 방식으로 물러선다. */
+function isMissingRpc(err){
+  return !!err && (err.code==='PGRST202' || /Could not find the function/i.test(err.message||''));
+}
+
+/* 출근/연장/퇴근 기록을 daily_reports.crew 배열의 내 항목에 병합한다.
+   예전엔 여기서 crew를 통째로 읽어 고친 뒤 통째로 다시 썼는데, 같은 팀 두 사람이 몇 초
+   안에 체크하면 나중 사람이 "먼저 사람이 체크하기 전"의 배열을 읽어 그대로 덮어써서
+   먼저 찍은 사람의 기록이 사라졌다(아침에 팀원이 한꺼번에 찍는 게 정상 상황이라 실제로
+   터진다). 이제 서버 함수 upsert_crew_entry가 행을 잠그고 한 트랜잭션으로 병합한다
+   — SUPABASE_CREW_UPSERT_RPC.sql 참고(work-report-daesun 저장소). */
 async function updateMyCrewEntry(patch){
   var id = draftId();
   var memberId = localStorage.getItem('member_id');
   var memberName = localStorage.getItem('member_name')||'이름없음';
+  var team = localStorage.getItem('member_team')||'미지정';
+
+  var rpc = await sbClient.rpc('upsert_crew_entry', {
+    p_id:id, p_team:team, p_date:todayStr(),
+    p_member_id:memberId, p_member_name:memberName, p_patch:patch
+  });
+  if(!rpc.error) return {error:null};
+  if(!isMissingRpc(rpc.error)) return {error: rpc.error};
+
+  // ── 아래는 SQL을 아직 실행하지 않은 동안만 쓰이는 옛 경로(동시 체크에 취약) ──
   var res = await sbClient.from('daily_reports').select('crew').eq('id',id).single();
   var crew = (res.data && Array.isArray(res.data.crew)) ? res.data.crew.slice() : [];
   var idx = crew.findIndex(function(c){ return c.member_id===memberId; });
   if(idx===-1){ crew.push(Object.assign({member_id:memberId, member_name:memberName}, patch)); }
   else{ crew[idx] = Object.assign({}, crew[idx], patch); }
-  var up = await sbClient.from('daily_reports').upsert({id:id, team:localStorage.getItem('member_team')||'미지정', date:todayStr(), crew:crew, updated_at:new Date().toISOString()});
+  var up = await sbClient.from('daily_reports').upsert({id:id, team:team, date:todayStr(), crew:crew, updated_at:new Date().toISOString()});
   return {error: up.error};
 }
 
@@ -508,7 +530,9 @@ async function loadMyDays(){
 
     if(!uniq.length){ listEl.innerHTML='<div style="padding:8px 0;">이 달에는 출력 기록이 없습니다.</div>'; return; }
     listEl.innerHTML = uniq.map(function(d){
-      var t=function(v){ return v ? v.slice(11,16) : '-'; };
+      // checkInAt/checkOutAt은 toISOString()으로 저장된 UTC라 문자열을 그대로 자르면
+      // 9시간 어긋난다(위 카드의 fmtTime과 값이 달라 보이던 원인) — 현지시각으로 변환한다.
+      var t=function(v){ return v ? fmtTime(v) : '-'; };
       return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--field-bg);">'
         +'<span style="color:var(--ink);font-weight:700;">'+d.date+'</span>'
         +'<span>출근 '+t(d.me.checkInAt)+' · 퇴근 '+t(d.me.checkOutAt)+(d.me.overtimeCheckAt?' · 연장':'')+'</span>'
