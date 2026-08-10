@@ -10,6 +10,10 @@
 <meta name="theme-color" content="#1E3A5F"/>
 <meta name="apple-mobile-web-app-title" content="출퇴근체크"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
+<!-- 여기는 작업자도 들어오는 화면이라 막지는 않는다(data-require="worker"). 등급을 받아와
+     캐시해두는 게 목적 — 그래야 아래 앱 이동 버튼이 이 사람이 갈 수 있는 앱을 제대로 띄운다.
+     이게 없으면 권한 도입 전에 로그인해둔 운영자가 여기서 나갈 방법이 없었다(2026-08-10). -->
+<script src="/report/role-gate.js" data-require="worker"></script>
 <style>
 :root{
   --brand-1:#1E3A5F; --brand-2:#2E5F9E;
