@@ -110,7 +110,7 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 </div>
 
 <div class="info-note">
-  ⓘ 출근·퇴근 모두 현장 반경 <b>1km</b> 이내에서만 가능합니다. 정규 퇴근은 <b>16:55</b>부터 가능하고,
+  ⓘ 출근·퇴근 모두 현장 반경 <b id="geofenceNote">1km</b> 이내에서만 가능합니다. 정규 퇴근은 <b>16:55</b>부터 가능하고,
   연장근무를 신청한 경우 그날 관리자가 지정한 연장종료시간 <b>+5분</b>부터 퇴근체크가 가능합니다.
   하루에 출근·퇴근 각 1회만 기록됩니다.
 </div>
@@ -228,9 +228,13 @@ function fmtTime(iso){
 }
 document.getElementById('todayLabel').textContent = todayStr();
 
-/* 출근/퇴근 반경 게이트 — work-report-daesun 출력체크와 달리 관리자 조정 없이 1km로
-   고정한다(2026-08-06, 사용자 요청: "출퇴근 모두 반경 1km로 고정"). 현장 좌표(site_lat/
-   site_lng)만 work-report-daesun/admin.html에서 그대로 가져와 쓴다. */
+/* 출근/퇴근 반경 게이트. 원래는 여기에 1000을 박아뒀는데(2026-08-06, "출퇴근 모두 반경
+   1km로 고정"), 작업일보 인원현황의 출력체크는 app_settings.geofence_m을 읽고 있어서
+   같은 현장에 기준이 두 개가 됐다 — 관리자가 admin.html에서 반경을 바꾸면 두 앱이 서로
+   다른 거리로 판정한다(2026-08-10 발견). 이제 두 앱 모두 geofence_m 하나만 본다.
+   현재 등록값이 1000이라 "1km 고정"은 그대로 지켜지고, 관리자가 바꾸면 양쪽이 같이 바뀐다.
+   설정을 못 읽었을 때만 1000으로 진행한다.
+   ※ 반경을 정말로 1km에 잠그고 싶으면 admin.html의 "반경" 입력을 없애는 쪽이 맞다. */
 var GEOFENCE_M = 1000;
 var SITE_LAT=null, SITE_LNG=null;
 var OVERTIME_DATE=null, OVERTIME_END=null;
@@ -247,15 +251,23 @@ function haversineM(lat1,lng1,lat2,lng2){
 function formatDist(m){
   return m>=1000 ? (m/1000).toFixed(1)+'km' : Math.round(m)+'m';
 }
+/* 안내문에 박아둔 "1km"를 실제 적용 중인 반경으로 바꾼다 — 관리자가 admin.html에서
+   반경을 줄였는데 화면은 계속 1km라고 말하면 왜 안 되는지 알 수가 없다. */
+function renderGeofenceNote(){
+  var el=document.getElementById('geofenceNote');
+  if(el) el.textContent = formatDist(GEOFENCE_M);
+}
 
 async function loadSettings(){
   try{
-    var res = await sbClient.from('app_settings').select('site_lat,site_lng,overtime_date,overtime_end_time').eq('id','global').single();
+    var res = await sbClient.from('app_settings').select('site_lat,site_lng,geofence_m,overtime_date,overtime_end_time').eq('id','global').single();
     if(!res.error && res.data){
       SITE_LAT = res.data.site_lat; SITE_LNG = res.data.site_lng;
+      if(typeof res.data.geofence_m==='number' && res.data.geofence_m>0) GEOFENCE_M = res.data.geofence_m;
       OVERTIME_DATE = res.data.overtime_date || null;
       OVERTIME_END = res.data.overtime_end_time || null;
     }
+    renderGeofenceNote();
   }catch(e){ console.error('현장 설정 불러오기 실패', e); }
 }
 
@@ -338,7 +350,7 @@ async function updateMyCrewEntry(patch){
 }
 
 async function doCheckIn(){
-  if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 1km 이내에서만 출근체크할 수 있습니다', 'var(--err)'); return; }
+  if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 '+formatDist(GEOFENCE_M)+' 이내에서만 출근체크할 수 있습니다', 'var(--err)'); return; }
   // 화면 버튼은 이미 체크인했으면 안 보이지만, 두 번 연속 탭하거나 다른 탭에서 동시에 누르는
   // 경우까지 막으려고 실제 저장 직전에 서버 최신값을 한 번 더 확인한다(2026-08-06, "중복이나
   // 삭제가 되지 않도록" 요청) — updateMyCrewEntry는 병합(merge)이라 두 번 호출되면 checkInAt/
@@ -363,7 +375,7 @@ async function doOvertimeCheck(){
   await loadMyStatus(); renderState();
 }
 async function doCheckOut(){
-  if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 1km 이내에서만 퇴근체크할 수 있습니다', 'var(--err)'); return; }
+  if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 '+formatDist(GEOFENCE_M)+' 이내에서만 퇴근체크할 수 있습니다', 'var(--err)'); return; }
   if(new Date() < checkoutGate()){ showToast('⚠️ 아직 퇴근체크 시간이 아닙니다', 'var(--err)'); return; }
   var res = await updateMyCrewEntry({checkOutAt:new Date().toISOString(), checkOutDistanceM:Math.round(lastDistance)});
   if(res.error){ showToast('❌ 퇴근체크 실패: '+res.error.message, 'var(--err)'); return; }
@@ -410,7 +422,7 @@ function renderState(){
   }
   html += '<button type="button" class="sbtn sbtn-main" id="btnCheckOut" '+(canCheckOut?'':'disabled')+'>🚪 퇴근체크</button>';
   if(!canCheckOut){
-    html += '<div class="ci-sub">'+fmtGate(gate)+'부터 반경 1km 이내에서 가능</div>';
+    html += '<div class="ci-sub">'+fmtGate(gate)+'부터 반경 '+formatDist(GEOFENCE_M)+' 이내에서 가능</div>';
   }
   actionsEl.innerHTML = html;
   var ob = document.getElementById('btnOvertime'); if(ob) ob.onclick = doOvertimeCheck;
