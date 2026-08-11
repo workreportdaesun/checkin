@@ -3,12 +3,12 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
-<title>출퇴근체크</title>
+<title>출력일지</title>
 <link rel="icon" type="image/png" href="icon-192.png"/>
 <link rel="apple-touch-icon" href="icon-180.png"/>
 <link rel="manifest" href="manifest.json"/>
 <meta name="theme-color" content="#1E3A5F"/>
-<meta name="apple-mobile-web-app-title" content="출퇴근체크"/>
+<meta name="apple-mobile-web-app-title" content="출력일지"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <!-- 여기는 작업자도 들어오는 화면이라 막지는 않는다(data-require="worker"). 등급을 받아와
      캐시해두는 게 목적 — 그래야 아래 앱 이동 버튼이 이 사람이 갈 수 있는 앱을 제대로 띄운다.
@@ -93,7 +93,7 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 
 <div class="app-header">
   <div>
-    <div class="app-title"><img src="icon-mark.png" alt="">출퇴근체크</div>
+    <div class="app-title"><img src="icon-mark.png" alt="">출력일지</div>
     <div class="app-user" id="hdrUser"></div>
   </div>
   <div style="display:flex; flex-direction:column; align-items:flex-end; gap:5px;">
@@ -120,7 +120,7 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 <!-- 권한이 모자라 다른 앱에서 되돌아온 경우의 안내(role-gate.js가 sessionStorage에 남긴 쪽지). -->
 <div class="card" id="deniedNote" style="display:none; background:rgba(243,156,18,0.10); border:1px solid rgba(243,156,18,0.45);">
   <div style="font-size:13px; line-height:1.65; color:#8A5D0C;">
-    <b>출퇴근체크만 이용할 수 있는 계정입니다.</b><br>
+    <b>출력일지만 이용할 수 있는 계정입니다.</b><br>
     작업일보·작업사진 등을 쓰려면 운영자에게 권한 승급을 요청해 주세요.
   </div>
 </div>
