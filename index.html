@@ -412,13 +412,13 @@ async function doCheckIn(){
   var res = await updateMyCrewEntry({checkInAt:new Date().toISOString(), checkInDistanceM:Math.round(lastDistance), menu: localStorage.getItem('member_menu')||'', cat: localStorage.getItem('member_cat')||'', position: localStorage.getItem('member_position')||''});
   if(res.error){ showToast('❌ 출근체크 실패: '+res.error.message, 'var(--err)'); return; }
   showToast('✅ 출근체크 완료', 'var(--ok)');
-  await loadMyStatus(); renderState();
+  await loadMyStatus(); renderState(); await refreshMyDaysIfCurrentMonth();
 }
 async function doOvertimeCheck(){
   var res = await updateMyCrewEntry({overtimeCheckAt:new Date().toISOString()});
   if(res.error){ showToast('❌ 연장근무 신청 실패: '+res.error.message, 'var(--err)'); return; }
   showToast('🔥 연장근무 신청 완료', 'var(--ok)');
-  await loadMyStatus(); renderState();
+  await loadMyStatus(); renderState(); await refreshMyDaysIfCurrentMonth();
 }
 async function doCheckOut(){
   if(lastDistance==null || lastDistance>GEOFENCE_M){ showToast('⚠️ 반경 '+formatDist(GEOFENCE_M)+' 이내에서만 퇴근체크할 수 있습니다', 'var(--err)'); return; }
@@ -426,7 +426,15 @@ async function doCheckOut(){
   var res = await updateMyCrewEntry({checkOutAt:new Date().toISOString(), checkOutDistanceM:Math.round(lastDistance)});
   if(res.error){ showToast('❌ 퇴근체크 실패: '+res.error.message, 'var(--err)'); return; }
   showToast('✅ 퇴근체크 완료 — 수고하셨습니다', 'var(--ok)');
-  await loadMyStatus(); renderState();
+  await loadMyStatus(); renderState(); await refreshMyDaysIfCurrentMonth();
+}
+
+/* 체크 직후 하단 "내 출력일수"도 같이 갱신한다(2026-08-11). 예전엔 첫 박스만 바뀌고 달력은
+   조회를 다시 눌러야 오늘이 채워졌다 — 첫 박스에서 시각 표기를 뺀 뒤로는 이게 없으면 방금
+   찍힌 시각을 볼 데가 없어진다. 지난 달을 들여다보는 중이면 그 화면은 건드리지 않는다. */
+async function refreshMyDaysIfCurrentMonth(){
+  var sel=document.getElementById('myDaysMonth');
+  if(sel && sel.value===ymOf(new Date())) await loadMyDays();
 }
 
 function renderState(){
@@ -435,6 +443,7 @@ function renderState(){
   /* 거리 표기("현장까지 118m")는 화면에서 뺐다(2026-08-11 사용자 요청). 위치를 못 읽은 경우의
      안내는 남긴다 — 이게 없으면 버튼이 왜 비활성인지 알 방법이 없다. */
   var distLine = lastDistanceErr ? '<div class="dim">'+lastDistanceErr+'</div>' : '';
+  statusEl.style.display = '';   // 퇴근 완료 분기에서 숨겼을 수 있으므로 매번 되돌린다
 
   if(!myCrew || !myCrew.checkInAt){
     statusEl.innerHTML = '아직 출근체크 전입니다'+distLine;
@@ -444,9 +453,13 @@ function renderState(){
     return;
   }
 
+  /* 출근·퇴근 시각은 여기서 빼고 아래 "내 출력일수"에서만 본다(2026-08-11 사용자 요청).
+     같은 값이 한 화면에 두 번 나오던 것을 정리한 것 — 대신 체크 직후 달력이 자동 갱신되고
+     오늘 칸이 펼쳐지도록 같이 손봤다(refreshMyDaysIfCurrentMonth, loadMyDays 끝부분).
+     여기엔 "지금 어느 단계인가"만 남긴다. */
   if(myCrew.checkOutAt){
-    statusEl.innerHTML = '출근 <b>'+fmtTime(myCrew.checkInAt)+'</b> · 퇴근 <b>'+fmtTime(myCrew.checkOutAt)+'</b>'
-      + (myCrew.overtimeCheckAt ? '<br><span style="font-size:13px;color:var(--brand-2);">🔥 연장근무</span>' : '');
+    statusEl.innerHTML = (myCrew.overtimeCheckAt ? '<span style="font-size:13px;color:var(--brand-2);">🔥 연장근무</span>' : '');
+    statusEl.style.display = myCrew.overtimeCheckAt ? '' : 'none';
     actionsEl.innerHTML = '<div class="ci-done">✅ 오늘 출력체크 완료</div>';
     return;
   }
@@ -458,7 +471,7 @@ function renderState(){
   var gate = checkoutGate();
   var canCheckOut = now>=gate && lastDistance!=null && lastDistance<=GEOFENCE_M;
 
-  statusEl.innerHTML = '출근 <b>'+fmtTime(myCrew.checkInAt)+'</b>'
+  statusEl.innerHTML = '✅ 출근체크 완료'
     + (myCrew.overtimeCheckAt ? '<br><span style="font-size:13px;color:var(--brand-2);">🔥 연장근무 신청됨</span>' : '')
     + distLine;
 
@@ -720,6 +733,12 @@ async function loadMyDays(){
       + pill('주월차', tot.leave, '#8E44AD');
 
     renderMyDaysCalendar(ym, days);
+
+    /* 오늘 기록이 있으면 눌러둔 상태로 시작한다(2026-08-11) — 첫 박스에서 출근/퇴근 시각을
+       뺐으므로, 오늘 몇 시에 찍혔는지가 여기서 바로 보여야 한다. 기록이 없는 날까지 펼치면
+       "기록 없음"만 뜨므로 그때는 접어둔다. */
+    var td=todayStr();
+    if(myDaysByDate[td]) selectMyDay(td);
   }catch(e){ calEl.textContent='불러오기 실패: '+(e.message||e); }
 }
 
