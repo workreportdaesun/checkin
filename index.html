@@ -273,13 +273,32 @@ function fmtTime(iso){
   return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
 /* 카드 제목의 "오늘 출력체크" 문구는 뺐다(2026-08-11 사용자 요청) — 아래 버튼과 완료 배지가
-   이미 같은 말을 한다. 날짜는 남긴다: 이 앱은 며칠씩 열어두는 PWA인데 이 값은 로드 시점
-   그대로 남으므로, 어제 열어둔 화면인지 알아볼 단서가 이것뿐이다. */
-(function(){
+   이미 같은 말을 한다. 날짜는 남긴다: 며칠씩 열어두는 PWA라 지금 화면이 언제 것인지
+   확인할 단서가 필요하다. */
+function renderTodayLabel(){
   var d=new Date();
   document.getElementById('todayLabel').textContent =
     todayStr()+' ('+['일','월','화','수','목','금','토'][d.getDay()]+')';
-})();
+}
+renderTodayLabel();
+
+/* 자정을 넘기면 화면을 통째로 다시 읽는다(2026-08-11). 날짜 표시·myCrew(draftId가 그날
+   행을 가리킨다)·달력이 전부 로드 시점 기준이라, 그냥 두면 어제 화면을 오늘 것으로 보게
+   된다 — 어제 퇴근체크까지 끝낸 화면(✅ 오늘 출력체크 완료)을 보고 오늘도 출근한 걸로
+   착각하는 게 제일 위험하다.
+   부분 갱신 대신 reload인 이유: 월 선택 목록(최근 6개월)까지 다시 만들어야 하고, 이
+   화면엔 저장 안 된 입력이 없어서 통째로 다시 읽는 편이 빠뜨리는 데가 없다.
+   백그라운드에선 타이머가 멈출 수 있으므로 30초 주기와 화면 복귀 양쪽에서 확인한다. */
+var loadedDay = todayStr();
+function checkDayRollover(){
+  if(todayStr()===loadedDay) return false;
+  loadedDay = todayStr();   // reload가 막히는 환경에서도 매번 다시 부르지 않도록 먼저 갱신
+  location.reload();
+  return true;
+}
+document.addEventListener('visibilitychange', function(){
+  if(document.visibilityState==='visible') checkDayRollover();
+});
 
 /* 출근/퇴근 반경 게이트. 원래는 여기에 1000을 박아뒀는데(2026-08-06, "출퇴근 모두 반경
    1km로 고정"), 작업일보 인원현황의 출력체크는 app_settings.geofence_m을 읽고 있어서
@@ -496,6 +515,7 @@ function renderState(){
 }
 
 async function refreshAll(){
+  if(checkDayRollover()) return;   // 날짜가 넘어갔으면 어차피 새로 읽는다
   await refreshDistance();
   renderState();
 }
