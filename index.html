@@ -126,7 +126,7 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 </div>
 
 <div class="card" id="checkinCard">
-  <div class="flbl">오늘 출력체크 (<span id="todayLabel"></span>)</div>
+  <div class="flbl" id="todayLabel"></div>
   <div class="ci-status" id="ciStatus">불러오는 중...</div>
   <div id="ciActions"></div>
 </div>
@@ -272,7 +272,14 @@ function fmtTime(iso){
   var d=new Date(iso);
   return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 }
-document.getElementById('todayLabel').textContent = todayStr();
+/* 카드 제목의 "오늘 출력체크" 문구는 뺐다(2026-08-11 사용자 요청) — 아래 버튼과 완료 배지가
+   이미 같은 말을 한다. 날짜는 남긴다: 이 앱은 며칠씩 열어두는 PWA인데 이 값은 로드 시점
+   그대로 남으므로, 어제 열어둔 화면인지 알아볼 단서가 이것뿐이다. */
+(function(){
+  var d=new Date();
+  document.getElementById('todayLabel').textContent =
+    todayStr()+' ('+['일','월','화','수','목','금','토'][d.getDay()]+')';
+})();
 
 /* 출근/퇴근 반경 게이트. 원래는 여기에 1000을 박아뒀는데(2026-08-06, "출퇴근 모두 반경
    1km로 고정"), 작업일보 인원현황의 출력체크는 app_settings.geofence_m을 읽고 있어서
