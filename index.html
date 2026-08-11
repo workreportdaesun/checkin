@@ -40,7 +40,10 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 .ci-status{font-size:16px; font-weight:700; color:var(--ink); line-height:1.6; margin-bottom:14px;}
 .ci-status .dim{font-size:13px; font-weight:400; color:var(--lbl);}
 .ci-sub{font-size:12.5px; color:var(--lbl); text-align:center; margin-top:6px;}
-.ci-done{display:flex; align-items:center; gap:8px; background:rgba(39,174,96,0.1); border:1px solid rgba(39,174,96,0.35); border-radius:10px; padding:12px 14px; font-size:14px; font-weight:700; color:#1c7a44;}
+/* 날짜 줄 — 왼쪽 날짜, 오른쪽 완료 배지 */
+.ci-head{display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px;}
+.ci-head .flbl{margin:0;}
+.ci-badge{background:rgba(39,174,96,0.1); border:1px solid rgba(39,174,96,0.35); border-radius:8px; padding:4px 10px; font-size:12.5px; font-weight:800; color:#1c7a44; white-space:nowrap;}
 
 .sbtn{width:100%; padding:14px; border:none; border-radius:10px; font-size:16px; font-weight:800; cursor:pointer; font-family:var(--font-body);}
 .sbtn-main{background:var(--brand-2); color:#fff;}
@@ -126,7 +129,12 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 </div>
 
 <div class="card" id="checkinCard">
-  <div class="flbl" id="todayLabel"></div>
+  <!-- 완료 배지는 날짜와 같은 줄 오른쪽에 둔다(2026-08-11 사용자 요청) — 예전엔 버튼 자리에
+       큰 상자로 나와서, 퇴근까지 끝낸 날은 카드가 통째로 배지 하나만 남아 세로로 길었다. -->
+  <div class="ci-head">
+    <div class="flbl" id="todayLabel"></div>
+    <div class="ci-badge" id="ciBadge" style="display:none;"></div>
+  </div>
   <div class="ci-status" id="ciStatus">불러오는 중...</div>
   <div id="ciActions"></div>
 </div>
@@ -284,7 +292,7 @@ renderTodayLabel();
 
 /* 자정을 넘기면 화면을 통째로 다시 읽는다(2026-08-11). 날짜 표시·myCrew(draftId가 그날
    행을 가리킨다)·달력이 전부 로드 시점 기준이라, 그냥 두면 어제 화면을 오늘 것으로 보게
-   된다 — 어제 퇴근체크까지 끝낸 화면(✅ 오늘 출력체크 완료)을 보고 오늘도 출근한 걸로
+   된다 — 어제 퇴근체크까지 끝낸 화면(✅ 출퇴근 완료)을 보고 오늘도 출근한 걸로
    착각하는 게 제일 위험하다.
    부분 갱신 대신 reload인 이유: 월 선택 목록(최근 6개월)까지 다시 만들어야 하고, 이
    화면엔 저장 안 된 입력이 없어서 통째로 다시 읽는 편이 빠뜨리는 데가 없다.
@@ -468,13 +476,16 @@ function renderState(){
   var actionsEl = document.getElementById('ciActions');
   /* 거리 표기("현장까지 118m")는 화면에서 뺐다(2026-08-11 사용자 요청). 위치를 못 읽은 경우의
      안내는 남긴다 — 이게 없으면 버튼이 왜 비활성인지 알 방법이 없다. */
+  var badgeEl = document.getElementById('ciBadge');
   var distLine = lastDistanceErr ? '<div class="dim">'+lastDistanceErr+'</div>' : '';
   statusEl.style.display = '';   // 퇴근 완료 분기에서 숨겼을 수 있으므로 매번 되돌린다
+  badgeEl.style.display = 'none';   // 완료 분기에서만 다시 켠다
+  badgeEl.textContent = '';
 
   if(!myCrew || !myCrew.checkInAt){
     statusEl.innerHTML = '아직 출근체크 전입니다'+distLine;
     var canCheckIn = lastDistance!=null && lastDistance<=GEOFENCE_M;
-    actionsEl.innerHTML = '<button type="button" class="sbtn sbtn-main" id="btnCheckIn" '+(canCheckIn?'':'disabled')+'>📍 출근체크</button>';
+    actionsEl.innerHTML = '<button type="button" class="sbtn sbtn-main" id="btnCheckIn" '+(canCheckIn?'':'disabled')+'>📍 출 근</button>';
     var btn = document.getElementById('btnCheckIn'); if(btn) btn.onclick = doCheckIn;
     return;
   }
@@ -486,7 +497,10 @@ function renderState(){
   if(myCrew.checkOutAt){
     statusEl.innerHTML = (myCrew.overtimeCheckAt ? '<span style="font-size:13px;color:var(--brand-2);">🔥 연장근무</span>' : '');
     statusEl.style.display = myCrew.overtimeCheckAt ? '' : 'none';
-    actionsEl.innerHTML = '<div class="ci-done">✅ 오늘 출력체크 완료</div>';
+    // 완료 표시는 날짜 줄 오른쪽 배지로 옮겼다 — 버튼 자리는 비운다.
+    badgeEl.textContent = '✅ 출퇴근 완료';
+    badgeEl.style.display = '';
+    actionsEl.innerHTML = '';
     return;
   }
 
@@ -505,7 +519,7 @@ function renderState(){
   if(canDeclareOvertime){
     html += '<button type="button" class="sbtn sbtn-outline" id="btnOvertime">🔥 연장근무 체크 ('+deadline1705.getHours()+':'+String(deadline1705.getMinutes()).padStart(2,'0')+'까지)</button>';
   }
-  html += '<button type="button" class="sbtn sbtn-main" id="btnCheckOut" '+(canCheckOut?'':'disabled')+'>🚪 퇴근체크</button>';
+  html += '<button type="button" class="sbtn sbtn-main" id="btnCheckOut" '+(canCheckOut?'':'disabled')+'>🚪 퇴 근</button>';
   if(!canCheckOut){
     html += '<div class="ci-sub">'+fmtGate(gate)+'부터 가능</div>';
   }
