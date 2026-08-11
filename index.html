@@ -70,6 +70,20 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 .cal-legend{display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; font-size:11px; color:var(--lbl); margin-top:10px;}
 .cal-legend span{display:flex; align-items:center; gap:3px;}
 .cal-detail{background:var(--field-bg); border:1.5px solid var(--field-bd); border-radius:10px; padding:10px 12px; margin-top:10px; font-size:13px; line-height:1.7; color:var(--ink);}
+/* 날짜를 눌렀을 때 나오는 상세(2026-08-11 개편) — 예전엔 공수와 출퇴근 시각이 한 줄에 뭉쳐 있어
+   뭐가 뭔지 읽기 어려웠다. 공수 내역/출퇴근 기록을 구획으로 나누고 항목=값 표로 세운다. */
+.cd-head{display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding-bottom:7px; border-bottom:1px solid var(--field-bd);}
+.cd-date{font-size:14px; font-weight:800; color:var(--ink);}
+.cd-hol{font-size:11px; font-weight:700; color:var(--err); margin-left:5px;}
+.cd-md{font-size:15px; font-weight:800; color:var(--brand-1); white-space:nowrap;}
+.cd-md small{font-size:10px; font-weight:700; color:var(--lbl); margin-left:2px;}
+.cd-sec{font-size:10.5px; font-weight:800; color:var(--lbl); letter-spacing:.04em; margin:9px 0 3px;}
+.cd-row{display:flex; align-items:baseline; gap:8px; line-height:1.75;}
+.cd-k{flex-shrink:0; width:60px; font-size:12px; color:var(--lbl); display:flex; align-items:center; gap:4px;}
+.cd-v{flex:1; min-width:0; font-size:13px; font-weight:700; color:var(--ink);}
+.cd-v.zero{font-weight:400; color:var(--muted);}
+.cd-v small{font-size:11px; font-weight:400; color:var(--lbl); margin-left:5px;}
+.cd-none{font-size:13px; color:var(--lbl); padding-top:7px;}
 .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); max-width:calc(100vw - 32px); padding:10px 20px; border-radius:10px; font-size:14px; font-weight:700; color:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.2); opacity:0; pointer-events:none; transition:opacity .25s; white-space:normal; text-align:center; line-height:1.4; z-index:9998;}
 .toast.show{opacity:1;}
 </style>
@@ -136,7 +150,7 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
     <span><i class="cal-dot d-ot"></i>연장</span>
     <span><i class="cal-dot d-extra"></i>추가</span>
     <span><i class="cal-dot d-leave"></i>주월차</span>
-    <span style="color:var(--muted);">날짜를 누르면 그날 기록이 아래에 나옵니다</span>
+    <span style="color:var(--muted);">날짜를 누르면 그날 출퇴근·공수 내역이 아래에 나옵니다</span>
   </div>
 </div>
 
@@ -648,7 +662,9 @@ async function loadMyDays(){
       // 같은 날 여러 팀 행에 걸쳐 있어도 하루는 하루로 센다(먼저 나온 기록을 쓴다).
       if(att[row.date]) return;
       att[row.date]={checkIn:true, overtime:!!me.overtimeCheckAt,
-        inAt:me.checkInAt, outAt:me.checkOutAt||'', otAt:me.overtimeCheckAt||''};
+        inAt:me.checkInAt, outAt:me.checkOutAt||'', otAt:me.overtimeCheckAt||'',
+        inDist:(me.checkInDistanceM==null?null:+me.checkInDistanceM),
+        outDist:(me.checkOutDistanceM==null?null:+me.checkOutDistanceM)};
     });
 
     /* 추가/주월차 수동입력 — 관리자가 status 출력일지에서 셀을 눌러 넣는 값(attendance_manual).
@@ -689,7 +705,8 @@ async function loadMyDays(){
       var md=base+ot+(mn.extra||0)+leave;
       if(!md) return;
       myDaysByDate[d]={base:base, ot:ot, extra:mn.extra||0, leave:leave, md:md,
-        inAt:a?a.inAt:'', outAt:a?a.outAt:'', otAt:a?a.otAt:''};
+        inAt:a?a.inAt:'', outAt:a?a.outAt:'', otAt:a?a.otAt:'',
+        inDist:a?a.inDist:null, outDist:a?a.outDist:null};
       tot.md+=md; tot.base+=base; tot.ot+=ot; tot.extra+=(mn.extra||0); tot.leave+=leave;
     });
 
@@ -749,21 +766,48 @@ function selectMyDay(d){
   var r=myDaysByDate[d], hol=holidayNameForDate(d);
   // checkInAt/checkOutAt은 toISOString()으로 저장된 UTC라 문자열을 그대로 자르면 9시간 어긋난다
   // (위 카드의 fmtTime과 값이 달라 보이던 원인) — 현지시각으로 변환한다.
-  var t=function(v){ return v ? fmtTime(v) : '-'; };
-  var head='<b>'+d+' ('+['일','월','화','수','목','금','토'][dowOf(d)]+')</b>'
-    +(hol?' <span style="color:var(--err);font-size:12px;">'+hol+'</span>':'');
+  var t=function(v){ return v ? fmtTime(v) : ''; };
+  var head='<div class="cd-head"><div class="cd-date">'+d+' ('+['일','월','화','수','목','금','토'][dowOf(d)]+')'
+    +(hol?'<span class="cd-hol">'+hol+'</span>':'')+'</div>'
+    +(r?'<div class="cd-md">'+r.md+'<small>MD</small></div>':'')+'</div>';
   if(!r){
-    detEl.innerHTML=head+'<br><span style="color:var(--lbl);">기록 없음</span>';
-  } else {
-    var parts=[];
-    if(r.base) parts.push('기본 1');
-    if(r.ot) parts.push('연장 1');
-    if(r.extra) parts.push('추가 '+r.extra);
-    if(r.leave) parts.push('주월차 '+r.leave);
-    detEl.innerHTML=head
-      +'<br>합계 <b>'+r.md+' MD</b> · '+parts.join(' · ')
-      +'<br><span style="color:var(--lbl);">출근 '+t(r.inAt)+' · 퇴근 '+t(r.outAt)+(r.otAt?' · 연장체크 '+t(r.otAt):'')+'</span>';
+    detEl.innerHTML=head+'<div class="cd-none">이 날은 출퇴근·공수 기록이 없습니다.</div>';
+    detEl.style.display='block';
+    return;
   }
+  /* 공수 내역 — 위 요약 pill과 같은 네 항목을 같은 순서·같은 색점으로 세운다.
+     0인 항목도 빼지 않는다: "추가가 0이라 안 보이는 것"과 "추가 항목 자체가 없는 것"을
+     사용자가 구분 못 해 문의가 생기기 때문. */
+  function mdRow(label, dot, v, unit){
+    return '<div class="cd-row"><div class="cd-k"><i class="cal-dot '+dot+'"></i>'+label+'</div>'
+      +'<div class="cd-v'+(v?'':' zero')+'">'+v+(unit||'')+'</div></div>';
+  }
+  /* 출퇴근 기록 — 시각과 함께 그때 잰 현장까지의 거리도 같이 보여준다(crew에 이미 쌓여 있는데
+     화면엔 안 쓰이던 값). 나중에 "체크가 왜 안 됐냐"를 본인이 바로 확인할 수 있다. */
+  function dist(m){
+    if(m==null || isNaN(m)) return '';
+    return ' <small>현장에서 '+(m<1000 ? Math.round(m)+'m' : (m/1000).toFixed(2)+'km')+'</small>';
+  }
+  function ckRow(label, iso, extra){
+    var v=t(iso);
+    return '<div class="cd-row"><div class="cd-k">'+label+'</div>'
+      +'<div class="cd-v'+(v?'':' zero')+'">'+(v ? v+(extra||'') : '기록 없음')+'</div></div>';
+  }
+  var worked='';
+  if(r.inAt && r.outAt){
+    var mins=Math.round((new Date(r.outAt)-new Date(r.inAt))/60000);
+    if(mins>0) worked='<div class="cd-row"><div class="cd-k">근무시간</div>'
+      +'<div class="cd-v">'+Math.floor(mins/60)+'시간 '+(mins%60)+'분</div></div>';
+  }
+  detEl.innerHTML = head
+    + '<div class="cd-sec">공수 내역</div>'
+    + mdRow('기본','d-base',r.base) + mdRow('연장','d-ot',r.ot)
+    + mdRow('추가','d-extra',r.extra) + mdRow('주월차','d-leave',r.leave)
+    + '<div class="cd-sec">출퇴근 기록</div>'
+    + ckRow('출근', r.inAt, dist(r.inDist))
+    + (r.otAt ? ckRow('연장체크', r.otAt, '') : '')
+    + ckRow('퇴근', r.outAt, dist(r.outDist))
+    + worked;
   detEl.style.display='block';
 }
 loadMyDays();
