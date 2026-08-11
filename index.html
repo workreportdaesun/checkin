@@ -50,6 +50,26 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 
 .info-note{font-size:12px; color:var(--lbl); line-height:1.7; background:var(--field-bg); border:1.5px dashed var(--field-bd); border-radius:10px; padding:12px 14px;}
 
+/* 내 출력일수 달력(2026-08-11) — 폭 480px 안에 7칸이 들어가야 하므로 셀은 정사각에 가깝게 두고
+   숫자(그날 MD 합계)와 색점만 넣는다. 상세(출근/퇴근 시각)는 눌렀을 때 아래 칸에 표시. */
+.cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:3px;}
+.cal-dow{text-align:center; font-size:11px; font-weight:700; color:var(--lbl); padding:2px 0;}
+.cal-dow.sun{color:var(--err);} .cal-dow.sat{color:var(--brand-2);}
+.cal-cell{background:var(--field-bg); border:1px solid var(--field-bd); border-radius:7px; min-height:46px; padding:3px 2px 2px; text-align:center; cursor:pointer; position:relative;}
+.cal-cell.empty{background:transparent; border-color:transparent; cursor:default;}
+.cal-cell.off{background:#fff; border-style:dashed;}
+.cal-cell.today{border-color:var(--brand-2); border-width:2px;}
+.cal-cell.on{background:rgba(46,95,158,0.10); border-color:var(--brand-2);}
+.cal-cell.sel{box-shadow:0 0 0 2px var(--brand-1) inset;}
+.cal-d{font-size:11px; font-weight:700; color:var(--lbl); line-height:1.2;}
+.cal-cell.sun .cal-d{color:var(--err);} .cal-cell.sat .cal-d{color:var(--brand-2);}
+.cal-md{font-size:15px; font-weight:800; color:var(--brand-1); line-height:1.2;}
+.cal-dots{display:flex; justify-content:center; gap:2px; margin-top:1px; min-height:6px;}
+.cal-dot{display:inline-block; width:6px; height:6px; border-radius:50%; flex-shrink:0;}
+.d-base{background:var(--brand-2);} .d-ot{background:#8A5D0C;} .d-extra{background:var(--ok);} .d-leave{background:#8E44AD;}
+.cal-legend{display:flex; flex-wrap:wrap; gap:4px 10px; align-items:center; font-size:11px; color:var(--lbl); margin-top:10px;}
+.cal-legend span{display:flex; align-items:center; gap:3px;}
+.cal-detail{background:var(--field-bg); border:1.5px solid var(--field-bd); border-radius:10px; padding:10px 12px; margin-top:10px; font-size:13px; line-height:1.7; color:var(--ink);}
 .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%); max-width:calc(100vw - 32px); padding:10px 20px; border-radius:10px; font-size:14px; font-weight:700; color:#fff; box-shadow:0 4px 12px rgba(0,0,0,0.2); opacity:0; pointer-events:none; transition:opacity .25s; white-space:normal; text-align:center; line-height:1.4; z-index:9998;}
 .toast.show{opacity:1;}
 </style>
@@ -96,17 +116,28 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
   <div id="ciActions"></div>
 </div>
 
-<!-- 내 출력일수(2026-08-09) — 작업자에게 허용된 두 가지 기능 중 하나.
+<!-- 내 출력일수(2026-08-09, 2026-08-11 출력일지 기준으로 개편) — 작업자에게 허용된 두 가지 기능 중 하나.
      daily_reports.crew[]에서 내 member_id가 든 날을 세므로 별도 테이블이 필요 없고,
-     관리자 화면의 출력일지(같은 원천)와 숫자가 어긋나지 않는다. -->
+     관리자 화면의 출력일지(같은 원천)와 숫자가 어긋나지 않는다.
+     집계 기준은 인원투입계획/실투입 앱(status)의 출력일지와 동일한 MD 정의:
+       하루 = 기본(출근체크 1) + 연장(연장체크 1) + 추가(attendance_manual.extra)
+              + 주월차(attendance_manual.leave + 자동 주/월차) -->
 <div class="card" id="myDaysCard">
   <div class="flbl">내 출력일수</div>
   <div style="display:flex; gap:10px; margin-bottom:10px;">
     <select id="myDaysMonth" class="f" style="flex:1;" onchange="loadMyDays()"></select>
     <button type="button" class="sbtn" style="flex-shrink:0; width:auto; padding:0 14px; margin:0;" onclick="loadMyDays()">조회</button>
   </div>
-  <div id="myDaysSummary" style="display:flex; gap:8px; margin-bottom:10px;"></div>
-  <div id="myDaysList" style="font-size:13px; color:var(--lbl);">불러오는 중...</div>
+  <div id="myDaysSummary" style="display:flex; gap:6px; margin-bottom:12px;"></div>
+  <div id="myDaysCal" style="font-size:13px; color:var(--lbl);">불러오는 중...</div>
+  <div id="myDaysDetail" class="cal-detail" style="display:none;"></div>
+  <div class="cal-legend">
+    <span><i class="cal-dot d-base"></i>기본</span>
+    <span><i class="cal-dot d-ot"></i>연장</span>
+    <span><i class="cal-dot d-extra"></i>추가</span>
+    <span><i class="cal-dot d-leave"></i>주월차</span>
+    <span style="color:var(--muted);">날짜를 누르면 그날 기록이 아래에 나옵니다</span>
+  </div>
 </div>
 
 <div class="info-note">
@@ -489,11 +520,92 @@ if('serviceWorker' in navigator){
   }catch(e){}
 })();
 
-/* ── 내 출력일수(2026-08-09) ──
-   daily_reports를 팀+월로 좁혀서 가져온 뒤 crew[]에서 내 member_id가 든 날을 센다.
+/* ── 내 출력일수(2026-08-09, 2026-08-11 출력일지 기준으로 개편) ──
+   daily_reports를 월로 좁혀서 가져온 뒤 crew[]에서 내 member_id가 든 날을 센다.
    별도 테이블을 만들지 않는 이유는 관리자 화면의 출력일지가 이미 같은 원천(crew)을 쓰고
-   있어서다 — 원천을 둘로 나누면 두 화면의 숫자가 어긋난다. */
+   있어서다 — 원천을 둘로 나누면 두 화면의 숫자가 어긋난다.
+
+   집계는 인원투입계획/실투입 앱(work-status-daesun)의 출력일지와 같은 정의를 쓴다:
+     하루 MD = 기본(출근체크) + 연장(연장체크) + 추가(attendance_manual.extra)
+               + 주월차(attendance_manual.leave + 자동 주/월차)
+   예전엔 여기서 "출근한 날 수"만 세서 출력일지 합계와 값이 달랐다.
+
+   ※ 자동 주/월차 판정 범위: 출력일지는 관리자가 정한 예상 시작일~완료일 안에서 판정하지만,
+     이 화면은 사용자가 고른 "그 달" 안에서만 판정한다(2026-08-11 사용자 확정). 월 경계에
+     걸친 주는 그 달에 들어온 근무일만 다 채우면 1로 인정하므로, 출력일지와 주차 개수가
+     경계 주에서 1개 차이 날 수 있다. */
 function ymOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+function pad2(n){ return String(n).padStart(2,'0'); }
+
+/* 공휴일·근무일·ISO주차 판정 — work-status-daesun/index.html의 같은 이름 함수들을 그대로 옮겨온 것.
+   두 앱이 같은 날을 근무일로 봐야 주/월차가 어긋나지 않으므로, status 쪽을 고치면 여기도 같이 고칠 것.
+   공휴일 추가분은 app_settings.holidays_extra를 우선 쓰고, 없으면 아래 기본값을 쓴다. */
+var FIXED_HOLIDAYS_MMDD=[
+  {md:'01-01',name:'신정'},{md:'03-01',name:'3·1절'},{md:'05-05',name:'어린이날'},
+  {md:'06-06',name:'현충일'},{md:'08-15',name:'광복절'},{md:'10-03',name:'개천절'},
+  {md:'10-09',name:'한글날'},{md:'12-25',name:'크리스마스'}
+];
+var DEFAULT_HOLIDAYS_EXTRA={
+  "2026":[
+    {date:'2026-02-16',name:'설날'},{date:'2026-02-17',name:'설날'},{date:'2026-02-18',name:'설날'},
+    {date:'2026-03-02',name:'대체공휴일'},
+    {date:'2026-05-24',name:'부처님오신날'},{date:'2026-05-25',name:'대체공휴일'},
+    {date:'2026-06-03',name:'지방선거'},
+    {date:'2026-08-17',name:'대체공휴일'},
+    {date:'2026-09-24',name:'추석'},{date:'2026-09-25',name:'추석'},{date:'2026-09-26',name:'추석'},
+    {date:'2026-10-05',name:'대체공휴일'}
+  ],
+  "2027":[
+    {date:'2027-02-16',name:'설날'},{date:'2027-02-17',name:'설날'},{date:'2027-02-18',name:'설날'},
+    {date:'2027-03-02',name:'대체공휴일'},
+    {date:'2027-05-24',name:'부처님오신날'},{date:'2027-05-25',name:'대체공휴일'},
+    {date:'2027-06-03',name:'지방선거'},
+    {date:'2027-08-17',name:'대체공휴일'},
+    {date:'2027-09-24',name:'추석'},{date:'2027-09-25',name:'추석'},{date:'2027-09-26',name:'추석'},
+    {date:'2027-10-05',name:'대체공휴일'}
+  ]
+};
+var holidaysExtra={}, _holCache={};
+function getHolidaysForYear(year){
+  var extra = holidaysExtra[year] || DEFAULT_HOLIDAYS_EXTRA[year] || [];
+  return FIXED_HOLIDAYS_MMDD.map(function(h){ return {date:year+'-'+h.md,name:h.name}; }).concat(extra);
+}
+function holidayNameForDate(dateStr){
+  var year = dateStr.slice(0,4);
+  if(!_holCache[year]){
+    var map={};
+    getHolidaysForYear(year).forEach(function(h){ map[h.date]=h.name; });
+    _holCache[year]=map;
+  }
+  return _holCache[year][dateStr] || null;
+}
+function dowOf(dateStr){ return new Date(dateStr+'T00:00:00').getDay(); }
+function isWeekend(dateStr){ var w=dowOf(dateStr); return w===0||w===6; }
+function isNonWorkDay(dateStr){ return isWeekend(dateStr) || !!holidayNameForDate(dateStr); }
+function isoWeekStringFromDate(d){
+  var date=new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  var dayNum=(date.getDay()+6)%7;
+  date.setDate(date.getDate()-dayNum+3);
+  var firstThursday=new Date(date.getFullYear(),0,4);
+  var firstDayNum=(firstThursday.getDay()+6)%7;
+  firstThursday.setDate(firstThursday.getDate()-firstDayNum+3);
+  var weekNo=1+Math.round((date-firstThursday)/(7*24*3600*1000));
+  return date.getFullYear()+'-W'+pad2(weekNo);
+}
+function monthDayList(ym){
+  var y=+ym.slice(0,4), m=+ym.slice(5,7);
+  var n=new Date(y, m, 0).getDate(), out=[];
+  for(var d=1; d<=n; d++) out.push(ym+'-'+pad2(d));
+  return out;
+}
+/* 공휴일 설정은 관리자가 status 앱에서 바꾸므로 매번 새로 읽는다(실패해도 기본 공휴일로 진행). */
+async function loadHolidaySettings(){
+  if(!sbClient) return;
+  try{
+    var res=await sbClient.from('app_settings').select('holidays_extra').eq('id','global').single();
+    if(res.data && res.data.holidays_extra){ holidaysExtra=res.data.holidays_extra; _holCache={}; }
+  }catch(e){ console.error('공휴일 설정 불러오기 실패', e); }
+}
 (function initMyDaysMonths(){
   var sel=document.getElementById('myDaysMonth');
   var now=new Date(), opts=[];
@@ -504,53 +616,155 @@ function ymOf(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'
   sel.innerHTML=opts.join('');
 })();
 
+var myDaysByDate={};      // 'YYYY-MM-DD' -> {base,ot,extra,leave,md,inAt,outAt,otAt}
+var myDaysSelected='';    // 달력에서 누른 날짜
+
 async function loadMyDays(){
-  var listEl=document.getElementById('myDaysList');
+  var calEl=document.getElementById('myDaysCal');
   var sumEl=document.getElementById('myDaysSummary');
+  var detEl=document.getElementById('myDaysDetail');
   var myId=localStorage.getItem('member_id');
-  var team=localStorage.getItem('member_team')||'미지정';
   var ym=document.getElementById('myDaysMonth').value;
-  if(!sbClient || !myId){ listEl.textContent='불러올 수 없습니다.'; return; }
-  listEl.textContent='불러오는 중...'; sumEl.innerHTML='';
+  if(!sbClient || !myId){ calEl.textContent='불러올 수 없습니다.'; return; }
+  calEl.textContent='불러오는 중...'; sumEl.innerHTML=''; detEl.style.display='none';
+  myDaysSelected='';
   try{
+    var days=monthDayList(ym);
+    var first=days[0], last=days[days.length-1];
+    await loadHolidaySettings();
     /* 소속이 바뀐 적이 있으면 예전 팀 행에도 내 기록이 남아 있다. 팀으로 좁히면 그게 빠지므로
        날짜 범위로만 좁히고 crew 안에서 내 id로 거른다(회원 1~수십 명 규모라 부담 없음). */
     var res=await sbClient.from('daily_reports')
       .select('date,crew')
-      .gte('date', ym+'-01').lte('date', ym+'-31')
+      .gte('date', first).lte('date', last)
       .order('date');
-    if(res.error){ listEl.textContent='불러오기 실패: '+res.error.message; return; }
+    if(res.error){ calEl.textContent='불러오기 실패: '+res.error.message; return; }
 
-    var days=[];
+    var att={};
     (res.data||[]).forEach(function(row){
       var crew=Array.isArray(row.crew)?row.crew:[];
       var me=crew.find(function(c){ return String(c.member_id)===String(myId); });
-      if(me && me.checkInAt) days.push({date:row.date, me:me});
+      if(!me || !me.checkInAt) return;
+      // 같은 날 여러 팀 행에 걸쳐 있어도 하루는 하루로 센다(먼저 나온 기록을 쓴다).
+      if(att[row.date]) return;
+      att[row.date]={checkIn:true, overtime:!!me.overtimeCheckAt,
+        inAt:me.checkInAt, outAt:me.checkOutAt||'', otAt:me.overtimeCheckAt||''};
     });
-    // 같은 날 여러 팀 행에 걸쳐 있어도 하루는 하루로 센다.
-    var seen={}, uniq=[];
-    days.forEach(function(d){ if(!seen[d.date]){ seen[d.date]=1; uniq.push(d); } });
 
-    var overtime=uniq.filter(function(d){ return d.me.overtimeCheckAt; }).length;
+    /* 추가/주월차 수동입력 — 관리자가 status 출력일지에서 셀을 눌러 넣는 값(attendance_manual).
+       테이블이 없거나 못 읽어도 나머지는 그대로 보여준다. */
+    var manual={};
+    try{
+      var mres=await sbClient.from('attendance_manual')
+        .select('date,extra,leave').eq('member_id', myId).gte('date', first).lte('date', last);
+      if(!mres.error) (mres.data||[]).forEach(function(r){ manual[r.date]={extra:+r.extra||0, leave:+r.leave||0}; });
+    }catch(e){ console.error('추가/주월차 불러오기 실패', e); }
+
+    /* 자동 주/월차 — status의 buildAutoLeave와 같은 규칙(그 그룹의 근무일에 하루도 안 빠지면 1개,
+       그룹의 마지막 근무일 칸에 표시). 판정 범위만 "선택한 달"로 좁혀져 있다. */
+    var workDays=days.filter(function(d){ return !isNonWorkDay(d); });
+    var weekGroups={}, weekOrder=[];
+    workDays.forEach(function(d){
+      var k=isoWeekStringFromDate(new Date(d+'T00:00:00'));
+      if(!weekGroups[k]){ weekGroups[k]=[]; weekOrder.push(k); }
+      weekGroups[k].push(d);
+    });
+    var groups=weekOrder.map(function(k){ return weekGroups[k]; });
+    if(workDays.length) groups.push(workDays);   // 월차
+    var autoLeave={};
+    groups.forEach(function(g){
+      if(!g.length) return;
+      var full=g.every(function(d){ return att[d] && att[d].checkIn; });
+      if(!full) return;
+      var lastD=g[g.length-1];   // 달의 마지막 근무일엔 주차와 월차가 같이 떨어져 2가 될 수 있음
+      autoLeave[lastD]=(autoLeave[lastD]||0)+1;
+    });
+
+    myDaysByDate={};
+    var tot={md:0, base:0, ot:0, extra:0, leave:0};
+    days.forEach(function(d){
+      var a=att[d], mn=manual[d]||{extra:0,leave:0};
+      var base=a&&a.checkIn?1:0, ot=a&&a.overtime?1:0;
+      var leave=(mn.leave||0)+(autoLeave[d]||0);
+      var md=base+ot+(mn.extra||0)+leave;
+      if(!md) return;
+      myDaysByDate[d]={base:base, ot:ot, extra:mn.extra||0, leave:leave, md:md,
+        inAt:a?a.inAt:'', outAt:a?a.outAt:'', otAt:a?a.otAt:''};
+      tot.md+=md; tot.base+=base; tot.ot+=ot; tot.extra+=(mn.extra||0); tot.leave+=leave;
+    });
+
     function pill(label, value, color){
-      return '<div style="flex:1;background:var(--field-bg);border:1px solid var(--field-bd);border-radius:10px;padding:10px;text-align:center;">'
-        +'<div style="font-size:20px;font-weight:800;color:'+color+';">'+value+'</div>'
-        +'<div style="font-size:11px;color:var(--lbl);margin-top:2px;">'+label+'</div></div>';
+      return '<div style="flex:1;min-width:0;background:var(--field-bg);border:1px solid var(--field-bd);border-radius:10px;padding:8px 2px;text-align:center;">'
+        +'<div style="font-size:18px;font-weight:800;color:'+color+';">'+value+'</div>'
+        +'<div style="font-size:10px;color:var(--lbl);margin-top:2px;">'+label+'</div></div>';
     }
-    sumEl.innerHTML = pill('출력일수', uniq.length+'일', 'var(--brand-2)')
-      + pill('연장근무', overtime+'일', '#8A5D0C');
+    sumEl.innerHTML = pill('합계(MD)', tot.md, 'var(--brand-1)')
+      + pill('기본', tot.base, 'var(--brand-2)')
+      + pill('연장', tot.ot, '#8A5D0C')
+      + pill('추가', tot.extra, 'var(--ok)')
+      + pill('주월차', tot.leave, '#8E44AD');
 
-    if(!uniq.length){ listEl.innerHTML='<div style="padding:8px 0;">이 달에는 출력 기록이 없습니다.</div>'; return; }
-    listEl.innerHTML = uniq.map(function(d){
-      // checkInAt/checkOutAt은 toISOString()으로 저장된 UTC라 문자열을 그대로 자르면
-      // 9시간 어긋난다(위 카드의 fmtTime과 값이 달라 보이던 원인) — 현지시각으로 변환한다.
-      var t=function(v){ return v ? fmtTime(v) : '-'; };
-      return '<div style="display:flex;justify-content:space-between;padding:7px 0;border-top:1px solid var(--field-bg);">'
-        +'<span style="color:var(--ink);font-weight:700;">'+d.date+'</span>'
-        +'<span>출근 '+t(d.me.checkInAt)+' · 퇴근 '+t(d.me.checkOutAt)+(d.me.overtimeCheckAt?' · 연장':'')+'</span>'
-        +'</div>';
-    }).join('');
-  }catch(e){ listEl.textContent='불러오기 실패: '+(e.message||e); }
+    renderMyDaysCalendar(ym, days);
+  }catch(e){ calEl.textContent='불러오기 실패: '+(e.message||e); }
+}
+
+function renderMyDaysCalendar(ym, days){
+  var DOW=['일','월','화','수','목','금','토'];
+  var html='<div class="cal-grid">';
+  DOW.forEach(function(n,i){
+    html+='<div class="cal-dow'+(i===0?' sun':i===6?' sat':'')+'">'+n+'</div>';
+  });
+  for(var i=0;i<dowOf(days[0]);i++) html+='<div class="cal-cell empty"></div>';
+  var today=todayStr();
+  days.forEach(function(d){
+    var r=myDaysByDate[d], w=dowOf(d), hol=holidayNameForDate(d);
+    var cls='cal-cell'+(w===0||hol?' sun':w===6?' sat':'')
+      +(isNonWorkDay(d)?' off':'')+(r?' on':'')+(d===today?' today':'');
+    var dots='';
+    if(r){
+      if(r.base) dots+='<i class="cal-dot d-base"></i>';
+      if(r.ot) dots+='<i class="cal-dot d-ot"></i>';
+      if(r.extra) dots+='<i class="cal-dot d-extra"></i>';
+      if(r.leave) dots+='<i class="cal-dot d-leave"></i>';
+    }
+    html+='<div class="'+cls+'" id="cal-'+d+'" onclick="selectMyDay(\''+d+'\')" title="'+(hol||'')+'">'
+      +'<div class="cal-d">'+(+d.slice(8))+'</div>'
+      +'<div class="cal-md">'+(r?r.md:'')+'</div>'
+      +'<div class="cal-dots">'+dots+'</div></div>';
+  });
+  html+='</div>';
+  var n=Object.keys(myDaysByDate).length;
+  if(!n) html+='<div style="padding:10px 0 0;font-size:13px;">이 달에는 출력 기록이 없습니다.</div>';
+  document.getElementById('myDaysCal').innerHTML=html;
+}
+
+function selectMyDay(d){
+  var detEl=document.getElementById('myDaysDetail');
+  var prev=myDaysSelected?document.getElementById('cal-'+myDaysSelected):null;
+  if(prev) prev.classList.remove('sel');
+  if(myDaysSelected===d){ myDaysSelected=''; detEl.style.display='none'; return; }
+  myDaysSelected=d;
+  var cell=document.getElementById('cal-'+d);
+  if(cell) cell.classList.add('sel');
+  var r=myDaysByDate[d], hol=holidayNameForDate(d);
+  // checkInAt/checkOutAt은 toISOString()으로 저장된 UTC라 문자열을 그대로 자르면 9시간 어긋난다
+  // (위 카드의 fmtTime과 값이 달라 보이던 원인) — 현지시각으로 변환한다.
+  var t=function(v){ return v ? fmtTime(v) : '-'; };
+  var head='<b>'+d+' ('+['일','월','화','수','목','금','토'][dowOf(d)]+')</b>'
+    +(hol?' <span style="color:var(--err);font-size:12px;">'+hol+'</span>':'');
+  if(!r){
+    detEl.innerHTML=head+'<br><span style="color:var(--lbl);">기록 없음</span>';
+  } else {
+    var parts=[];
+    if(r.base) parts.push('기본 1');
+    if(r.ot) parts.push('연장 1');
+    if(r.extra) parts.push('추가 '+r.extra);
+    if(r.leave) parts.push('주월차 '+r.leave);
+    detEl.innerHTML=head
+      +'<br>합계 <b>'+r.md+' MD</b> · '+parts.join(' · ')
+      +'<br><span style="color:var(--lbl);">출근 '+t(r.inAt)+' · 퇴근 '+t(r.outAt)+(r.otAt?' · 연장체크 '+t(r.otAt):'')+'</span>';
+  }
+  detEl.style.display='block';
 }
 loadMyDays();
 </script>
