@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>출력일지</title>
 <link rel="icon" type="image/png" href="icon-192.png"/>
 <link rel="apple-touch-icon" href="icon-180.png"/>
@@ -17,9 +17,9 @@
 <style>
 :root{
   --brand-1:#1E3A5F; --brand-2:#2E5F9E;
-  --bg:#F0F4F8; --card:#fff; --card-bd:#D1DCE8; --ink:#1A2332; --lbl:#5A7A9A;
-  --field-bg:#F7FAFC; --field-bd:#C8D8E8; --muted:#A0BBD4;
-  --ok:#27AE60; --err:#E74C3C;
+  --bg:#F0F4F8; --card:#fff; --card-bd:#D1DCE8; --ink:#1A2332; --lbl:#4A6B8A;
+  --field-bg:#F7FAFC; --field-bd:#C8D8E8; --muted:#54708F;
+  --ok:#1B7A43; --err:#C0392B;
   --font-body:Arial,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
 }
 *{box-sizing:border-box; margin:0; padding:0;}
@@ -34,7 +34,7 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
 
 .card{background:var(--card); border:1px solid var(--card-bd); border-radius:12px; padding:16px; margin-bottom:10px; box-shadow:0 2px 6px rgba(0,0,0,0.06);}
 .flbl{font-size:13px; font-weight:700; color:var(--lbl); letter-spacing:.5px; text-transform:uppercase; margin:0 0 10px;}
-.f{width:100%; background:var(--field-bg); border:1.5px solid var(--field-bd); border-radius:8px; padding:10px 11px; color:var(--ink); font-size:16px; font-family:var(--font-body); margin-bottom:10px;}
+.f{width:100%; min-height:48px; background:var(--field-bg); border:1.5px solid var(--field-bd); border-radius:8px; padding:12px 11px; color:var(--ink); font-size:16px; font-family:var(--font-body); margin-bottom:10px;}
 .settings-btn{background:rgba(255,255,255,0.15); border:1px solid rgba(255,255,255,0.4); color:#fff; border-radius:8px; padding:6px 10px; font-size:13px; font-weight:700; cursor:pointer; flex-shrink:0; font-family:var(--font-body);}
 
 .ci-status{font-size:16px; font-weight:700; color:var(--ink); line-height:1.6; margin-bottom:14px;}
