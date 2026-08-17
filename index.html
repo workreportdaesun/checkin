@@ -121,6 +121,16 @@ body{background:var(--bg); color:var(--ink); font-family:var(--font-body); min-h
   <button type="button" class="sbtn sbtn-main" onclick="saveMySettings()">💾 내 정보 저장</button>
 </div>
 
+<!-- 등업승인제(2026-08-17): 별도 승인 컬럼 없이 role 3단계에 흡수 — role이 비어있거나
+     worker면 "아직 운영자 승인 전"인 상태다. 매번 눈에 보이도록 상시 안내. -->
+<div class="card" id="pendingApprovalNote" style="display:none; background:rgba(41,128,185,0.08); border:1px solid rgba(41,128,185,0.35);">
+  <div style="font-size:13px; line-height:1.65; color:#1A5276;">
+    <b>🕓 관리자 승인 대기 중입니다.</b><br>
+    지금은 출력일지·작업사진만 이용할 수 있어요. 운영자가 승인(현장관리자 이상으로 승격)하면
+    작업일보 등 전체 기능이 열립니다.
+  </div>
+</div>
+
 <!-- 권한이 모자라 다른 앱에서 되돌아온 경우의 안내(role-gate.js가 sessionStorage에 남긴 쪽지). -->
 <div class="card" id="deniedNote" style="display:none; background:rgba(243,156,18,0.10); border:1px solid rgba(243,156,18,0.45);">
   <div style="font-size:13px; line-height:1.65; color:#8A5D0C;">
@@ -586,6 +596,12 @@ if('serviceWorker' in navigator){
     location.reload();
   });
 }
+
+/* ── 등업승인제(2026-08-17): role이 비어있거나 worker면 상시 안내 ── */
+(function(){
+  var role = localStorage.getItem('member_role');
+  if(!role || role==='worker') document.getElementById('pendingApprovalNote').style.display='';
+})();
 
 /* ── 권한 부족으로 되돌아온 경우 안내 한 번만 표시 (role-gate.js가 남긴 쪽지) ── */
 (function(){
